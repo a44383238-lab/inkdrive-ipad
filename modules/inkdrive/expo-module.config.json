@@ -1,1 +1,1 @@
-{ "platforms": ["apple"], "apple": { "modules": ["InkDriveModule"] } }
+{ "platforms": ["apple"], "apple": { "modules": ["InkDriveModule"], "swiftModuleName": "InkDriveNative" } }
