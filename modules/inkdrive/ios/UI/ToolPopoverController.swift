@@ -22,12 +22,12 @@ import UIKit
         let title = UILabel(); title.text = tool.label; title.font = .systemFont(ofSize: 16, weight: .semibold); header.addArrangedSubview(title)
         header.addArrangedSubview(UIView())
         let hide = InkIcons.button("minus", label: "도구막대에서 빼기")
-        hide.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) { self?.removeTool?() } }, for: .touchUpInside)
+        hide.addAction(UIAction { [weak self] _ in guard let self else { return }; let action = self.removeTool; self.dismiss(animated: true, completion: action) }, for: .touchUpInside)
         header.addArrangedSubview(hide); stack.addArrangedSubview(header)
         if tool != .eraser && tool != .lasso {
             let swatches = UIStackView(); swatches.distribution = .equalSpacing
             for hex in ["#22344B", "#3869D4", "#D44B59", "#429A80", "#D4A340", "#9670C3"] {
-                let dot = UIButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.layer.cornerRadius = 15
+                let dot = InkColorButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.layer.cornerRadius = 15
                 dot.widthAnchor.constraint(equalToConstant: 30).isActive = true; dot.heightAnchor.constraint(equalToConstant: 30).isActive = true
                 dot.accessibilityLabel = "색상 " + hex
                 dot.addAction(UIAction { [weak self] _ in self?.settings.color = hex; self?.publish() }, for: .touchUpInside)
@@ -35,6 +35,8 @@ import UIKit
             }
             stack.addArrangedSubview(swatches)
             let well = UIColorWell(); well.selectedColor = settings.uiColor; well.supportsAlpha = false; well.accessibilityLabel = "다른 색상"
+            well.widthAnchor.constraint(equalToConstant: 44).isActive = true
+            well.heightAnchor.constraint(equalToConstant: 44).isActive = true
             well.addAction(UIAction { [weak self, weak well] _ in guard let self, let color = well?.selectedColor else { return }; self.settings.color = color.hexString; self.publish() }, for: .valueChanged)
             // A small color well sits beside the width controls, instead of a permanent toolbar row.
             let row = UIStackView(); row.alignment = .center; row.spacing = 8
@@ -48,7 +50,7 @@ import UIKit
         }
         if tool == .marker { stack.addArrangedSubview(toggle("직선 형광펜", settings.markerStraight) { [weak self] in self?.settings.markerStraight = $0; self?.publish() }) }
         let more = InkIcons.button("sliders-horizontal", label: "추가 도구 설정")
-        more.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) { self?.advanced?() } }, for: .touchUpInside)
+        more.addAction(UIAction { [weak self] _ in guard let self else { return }; let action = self.advanced; self.dismiss(animated: true, completion: action) }, for: .touchUpInside)
         stack.addArrangedSubview(more)
     }
     private func publish() { changed(settings) }

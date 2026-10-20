@@ -39,6 +39,13 @@ import PencilKit
         proxy.scrollViewWillEndDragging(scroll, withVelocity: CGPoint(x: 0, y: 7), targetContentOffset: &predicted)
         XCTAssertEqual(predicted, CGPoint(x: 0, y: 126))
     }
+    func testFingerCanStartPanningWithoutClaimingPencilInput() {
+        let scroll = UIScrollView()
+        let viewport = NotebookViewport(); viewport.configure(scroll)
+        XCTAssertTrue(scroll.canCancelContentTouches)
+        XCTAssertEqual(scroll.panGestureRecognizer.allowedTouchTypes, [NSNumber(value: UITouch.TouchType.direct.rawValue)])
+        XCTAssertFalse(scroll.bounces)
+    }
     private func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(descendants) }
     func testCompactToolbarHasMatchingIconsAndVisibleRecordButton() throws {
         let editor = try editor()

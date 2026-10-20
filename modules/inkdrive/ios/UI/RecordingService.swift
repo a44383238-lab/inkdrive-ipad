@@ -43,6 +43,8 @@ import UIKit
         let relative = "Recordings/" + filename
         let destination = try RecordingDrafts.url(filename)
         let audio = AVAudioSession.sharedInstance()
+        var didBegin = false
+        defer { if !didBegin { try? audio.setActive(false) } }
         try audio.setCategory(.record, mode: .default, options: [.allowBluetooth])
         try audio.setActive(true)
         try repository.savePendingRecording(PendingRecording(lesson: lesson, relative: relative, finished: false, localFileName: filename))
@@ -54,6 +56,7 @@ import UIKit
             throw NSError(domain: "InkDrive", code: 6, userInfo: [NSLocalizedDescriptionKey: "마이크를 시작하지 못했어요. 다른 앱의 녹음을 종료한 뒤 다시 눌러 주세요."])
         }
         self.scope = scope; self.relative = relative; self.localFileName = filename; self.lesson = lesson; self.repository = repository; self.recorder = recorder; lastError = nil
+        didBegin = true
         interruption = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self, self.active else { return }

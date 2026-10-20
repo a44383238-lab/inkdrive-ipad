@@ -19,13 +19,13 @@ import PDFKit
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     func clearSelection() { selected.removeAll(); selectionBounds = .null; outline.path = nil }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first, touch.type == .pencil else { return }
+        guard let touch = touches.first(where: { $0.type == .pencil }) else { return }
         let point = touch.location(in: self); points = [point]; endPoint = point
         moving = !selected.isEmpty && selectionBounds.insetBy(dx: -12, dy: -12).contains(point)
         if !moving { clearSelection() }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first, let first = points.first else { return }
+        guard let touch = touches.first(where: { $0.type == .pencil }), let first = points.first else { return }
         endPoint = touch.location(in: self); points.append(endPoint)
         let path = UIBezierPath()
         if moving { path.append(UIBezierPath(rect: selectionBounds.offsetBy(dx: endPoint.x - first.x, dy: endPoint.y - first.y))) }
@@ -33,10 +33,13 @@ import PDFKit
         else { path.move(to: first); path.addLine(to: endPoint) }
         outline.path = path.cgPath
     }
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { points = []; outline.path = nil }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard touches.contains(where: { $0.type == .pencil }) else { return }
+        points = []; outline.path = nil
+    }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let overlay, let editor = overlay.editor, let first = points.first else { return }
-        if let touch = touches.first { endPoint = touch.location(in: self) }
+        guard let touch = touches.first(where: { $0.type == .pencil }), let overlay, let editor = overlay.editor, let first = points.first else { return }
+        endPoint = touch.location(in: self)
         switch editor.tool {
         case .marker:
             let controls = [first, endPoint].enumerated().map { index, point in

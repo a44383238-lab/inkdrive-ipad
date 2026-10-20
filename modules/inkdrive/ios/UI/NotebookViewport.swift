@@ -29,7 +29,7 @@ final class StationaryScrollDelegate: NSObject, UIScrollViewDelegate {
             scroll.panGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
             scroll.pinchGestureRecognizer?.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
             scroll.panGestureRecognizer.minimumNumberOfTouches = 1
-            scroll.delaysContentTouches = false; scroll.canCancelContentTouches = false
+            scroll.delaysContentTouches = false; scroll.canCancelContentTouches = true
             let key = ObjectIdentifier(scroll)
             if !(scroll.delegate is StationaryScrollDelegate) {
                 let proxy = StationaryScrollDelegate(original: scroll.delegate)
