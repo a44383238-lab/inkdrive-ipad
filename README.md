@@ -5,8 +5,8 @@ iPad-first PDF notebook. Expo 56 hosts the library; Swift/PDFKit/PencilKit owns 
 ## Workspace rules
 
 - `../sources/` is a read-only project mirror. This app never writes there.
-- No GitHub remote, Actions workflow, signing identity, or IPA is created by this change. `eas.json` describes a future development-client build only; it has not been submitted or run.
-- An Expo development client must eventually be built to run the Swift module. Expo Go cannot run it.
+- A private GitHub repository and manually dispatched Actions workflows were authorized by the user. Run 39392434096 produced an unsigned arm64 Debug development IPA; run 39391400158 passed all 13 iPad simulator core tests. No EAS build or App Store submission was run.
+- The IPA contains the Expo development client and Swift module. Sign and install with Sideloadly, then connect to the local Metro server. Expo Go cannot run the module. See docs/DEVELOPMENT-BUILD.md.
 - A Windows JavaScript test pass is not proof of iOS compilation or iCloud interoperability.
 
 ## Local checks (no IPA)
