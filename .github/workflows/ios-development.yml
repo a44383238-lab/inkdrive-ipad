@@ -1,0 +1,57 @@
+name: iPad development IPA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipad-development
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install and verify
+        run: |
+          npm ci
+          npm test
+          npm run typecheck
+          npx expo install --check
+          xcodebuild -version
+      - name: Generate iOS application
+        run: |
+          npx expo prebuild --platform ios --clean --no-install
+          cd ios
+          pod install
+      - name: Compile development application
+        run: bash scripts/build-ios-development.sh
+      - name: Upload development IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: InkDrive-development-${{ github.run_number }}
+          path: |
+            artifacts/*.ipa
+            artifacts/*.sha256
+            artifacts/build-info.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: InkDrive-diagnostics-${{ github.run_number }}
+          path: build/*.log
+          if-no-files-found: ignore
+          retention-days: 3

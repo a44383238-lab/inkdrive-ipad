@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+ios/
+android/
+!modules/**/ios/
+!modules/**/ios/**
+*.ipa
+*.mobileprovision
+*.p12
+.DS_Store
+*.xcuserstate
+.build/
+config/*.local.json
+artifacts/
+build/

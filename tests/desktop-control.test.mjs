@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Script } from 'node:vm';
+import { DesktopRunner } from '../scripts/desktop-runner.mjs';
+import { createControlServer } from '../scripts/desktop-control.mjs';
+
+test('notebook button requires the local page token; valid click runs and reports empty input accurately', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'inkdrive-control-'));
+  const runner = new DesktopRunner({ root, executeJob: async () => { throw new Error('No class'); } });
+  const server = createControlServer(runner);
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(root, { recursive: true, force: true }); });
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const html = await (await fetch(url)).text();
+  const token = html.match(/name="inkdrive-token" content="([a-f0-9]+)"/)[1];
+  const script = html.match(/<script nonce="[^"]*">([\s\S]*?)<\/script>/)[1];
+  assert.doesNotThrow(() => new Script(script));
+  assert.match(html, /지금 수업 정리/);
+  assert.equal((await fetch(url + '/api/run', { method: 'POST', body: '{}' })).status, 403);
+  assert.equal(runner.state.phase, 'idle');
+  assert.equal((await fetch(url + '/api/run', { method: 'POST', headers: { 'X-InkDrive-Token': token, Origin: 'https://example.com' }, body: '{}' })).status, 403);
+  const accepted = await fetch(url + '/api/run', { method: 'POST', headers: { 'X-InkDrive-Token': token }, body: JSON.stringify({ date: '2026-10-20' }) });
+  assert.equal(accepted.status, 202);
+  const deadline = Date.now() + 3000;
+  while (runner.state.running && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+  const state = await (await fetch(url + '/api/status')).json();
+  assert.equal(state.phase, 'complete'); assert.equal(state.completed, 0); assert.equal(state.message, '처리할 새 수업이 없어요.');
+});
