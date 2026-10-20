@@ -1,0 +1,24 @@
+name: iOS PDF and storage tests
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run native tests on an available iPad simulator
+        run: |
+          set -o pipefail
+          mkdir -p build
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; devices=[d for k,v in json.load(sys.stdin)["devices"].items() if "iOS" in k for d in v if "iPad" in d["name"]]; print(devices[0]["udid"])')
+          cd modules/inkdrive/ios
+          xcodebuild test -scheme InkDriveCore -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath ../../../build/core-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../../../build/native-tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: InkDrive-native-test-results
+          path: build/*.log
+          retention-days: 3
