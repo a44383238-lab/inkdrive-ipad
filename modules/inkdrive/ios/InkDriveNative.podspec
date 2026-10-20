@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name = 'InkDrive'
+  s.name = 'InkDriveNative'
   s.module_name = 'InkDriveNative'
   s.version = '0.1.0'
   s.summary = 'In-place PencilKit PDF editor'

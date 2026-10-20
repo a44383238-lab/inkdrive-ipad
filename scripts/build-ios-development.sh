@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 mkdir -p build artifacts
+xcodebuild -list -workspace ios/InkDrive.xcworkspace
 xcodebuild \
   -workspace ios/InkDrive.xcworkspace \
   -scheme InkDrive \
@@ -19,6 +20,7 @@ xcodebuild \
 APP='build/DerivedData/Build/Products/Debug-iphoneos/InkDrive.app'
 test -d "$APP"
 test -f "$APP/InkDrive"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = 'app.inkdrive.notes'
 mkdir -p build/Package/Payload
 ditto "$APP" build/Package/Payload/InkDrive.app
 (
