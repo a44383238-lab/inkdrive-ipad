@@ -52,7 +52,8 @@ import PencilKit
         let buttons = descendants(editor.view).compactMap { $0 as? UIButton }
         let pen = try XCTUnwrap(buttons.first { $0.accessibilityLabel == "펜" })
         XCTAssertNotNil(pen.image(for: .normal))
-        XCTAssertNotNil(buttons.first { $0.accessibilityLabel == "녹음 시작" })
+        let recordButton = try XCTUnwrap(buttons.first { $0.accessibilityLabel == "녹음 시작" })
+        XCTAssertLessThanOrEqual(recordButton.frame.width, 120)
         XCTAssertNotNil(buttons.first { $0.accessibilityLabel == "서재로" })
         let bar = try XCTUnwrap(pen.superview?.superview?.superview?.superview)
         XCTAssertEqual(bar.frame.height, 56, accuracy: 0.1)

@@ -62,7 +62,7 @@ import AVFoundation
         recordButton.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
         recordButton.layer.cornerRadius = 13; recordButton.backgroundColor = UIColor(hex: "#FFF0F1")
         recordButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        recordButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 92).isActive = true
+        recordButton.widthAnchor.constraint(equalToConstant: 104).isActive = true
         recordButton.addTarget(self, action: #selector(toggleRecording), for: .touchUpInside)
         header.addArrangedSubview(recordButton)
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
