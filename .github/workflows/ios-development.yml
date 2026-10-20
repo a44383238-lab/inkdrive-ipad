@@ -2,17 +2,23 @@ name: iPad development IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Standard macOS runner
+        type: choice
+        options: [macos-26, macos-15]
+        default: macos-26
 
 permissions:
   contents: read
 
 concurrency:
-  group: ipad-native-${{ github.ref }}
+  group: ipad-native-${{ github.ref }}-${{ inputs.runner }}
   cancel-in-progress: false
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 60
     env:
       CI: '1'
