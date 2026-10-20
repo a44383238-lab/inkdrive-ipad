@@ -4,10 +4,6 @@ import PDFKit
 
 final class PencilCanvas: PKCanvasView {
     override var undoManager: UndoManager? { nil }
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        if event?.allTouches?.contains(where: { $0.type != .pencil }) == true { return nil }
-        return super.hitTest(point, with: event)
-    }
 }
 
 @MainActor final class PageOverlay: UIView, PKCanvasViewDelegate {
@@ -26,8 +22,8 @@ final class PencilCanvas: PKCanvasView {
         isOpaque = false; backgroundColor = .clear
         canvas.drawing = record.drawing; canvas.delegate = self; canvas.backgroundColor = .clear; canvas.isOpaque = false
         canvas.drawingPolicy = .pencilOnly; canvas.isScrollEnabled = false
-        canvas.panGestureRecognizer.isEnabled = false
-        canvas.pinchGestureRecognizer?.isEnabled = false
+        canvas.drawingGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        canvas.drawingGestureRecognizer.isEnabled = true
         addSubview(canvas); addSubview(interaction)
         interaction.overlay = self
         applyTool()
@@ -44,7 +40,7 @@ final class PencilCanvas: PKCanvasView {
         let customEraser = tool == .eraser && editor.settings.eraserTarget != "all"
         let native = [.pen, .pencil, .marker, .eraser].contains(tool) && !customMarker && !customEraser
         canvas.isUserInteractionEnabled = native
-        interaction.isUserInteractionEnabled = !native && tool != .hand
+        interaction.isUserInteractionEnabled = !native
         if tool != .lasso { interaction.clearSelection() }
     }
     func refresh() {

@@ -54,6 +54,8 @@ public final class InkDriveModule: Module {
                     let presenter = try self.controller()
                     let session = try await self.library().open(path)
                     let editor = EditorViewController(session: session); self.editor = editor
+                    editor.canRecord = true
+                    editor.recordingAction = { try await self.quickRecording(path) }
                     editor.didClose = {
                         self.editor = nil
                         do { try self.library().refreshLessonSources(pdf: path); promise.resolve(nil) }
@@ -105,6 +107,9 @@ public final class InkDriveModule: Module {
                 } catch { promise.reject(error) }
             }
         }.runOnQueue(.main)
+        AsyncFunction("quickStartRecording") { (path: String, promise: Promise) in
+            Task { @MainActor in do { try await self.quickRecording(path); promise.resolve(nil) } catch { promise.reject(error) } }
+        }.runOnQueue(.main)
         AsyncFunction("stopRecording") { (promise: Promise) in
             Task { @MainActor in do { try await RecordingService.shared.stop(); promise.resolve(nil) } catch { promise.reject(error) } }
         }.runOnQueue(.main)
@@ -128,5 +133,10 @@ public final class InkDriveModule: Module {
     }
     private func json<T: Encodable>(_ value: T) throws -> Any {
         try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
+    }
+    @MainActor private func quickRecording(_ path: String) async throws {
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"; formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        let lesson = try library().quickLesson(pdf: path, date: formatter.string(from: Date()))
+        try await RecordingService.shared.start(lesson: lesson, repository: library())
     }
 }

@@ -18,7 +18,7 @@ struct LessonRecord: Codable {
 
 @MainActor final class LibraryRepository {
     private let key = "inkdrive.library.v1"
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
     init(defaults: UserDefaults = .standard) { self.defaults = defaults }
     var root: LibraryRoot? {
         guard let bytes = defaults.data(forKey: key) else { return nil }
@@ -110,6 +110,14 @@ struct LessonRecord: Codable {
             let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(stored).write(to: directory.appendingPathComponent(lesson.id + ".json"), options: .atomic)
         }
+    }
+    func quickLesson(pdf: String, date: String) throws -> LessonRecord {
+        if let existing = try lessons(date: date).last(where: { $0.pdf == pdf && $0.endedAt == nil }) { return existing }
+        let components = pdf.split(separator: "/").map(String.init)
+        let title = URL(fileURLWithPath: components.last ?? pdf).deletingPathExtension().lastPathComponent
+        let subject = components.count > 1 ? components[components.count - 2] : "수업"
+        let lesson = LessonRecord(id: UUID().uuidString, date: date, subject: subject, title: title, pdf: pdf, recordings: [], materials: [], endedAt: nil)
+        try saveLesson(lesson); return lesson
     }
     func refreshLessonSources(pdf relative: String) throws {
         let scope = try access()

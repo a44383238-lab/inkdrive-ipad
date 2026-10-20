@@ -1,7 +1,25 @@
 import UIKit
 import PencilKit
 
-enum EditorTool: String, CaseIterable { case pen, pencil, marker, eraser, lasso, text, line, rectangle, ellipse, hand }
+enum EditorTool: String, CaseIterable {
+    case pen, pencil, marker, eraser, lasso, text
+    var label: String { switch self {
+    case .pen: return "펜"
+    case .pencil: return "연필"
+    case .marker: return "형광펜"
+    case .eraser: return "지우개"
+    case .lasso: return "올가미"
+    case .text: return "텍스트"
+    } }
+    var icon: String { switch self {
+    case .pen: return "pen-tool"
+    case .pencil: return "pencil"
+    case .marker: return "highlighter"
+    case .eraser: return "eraser"
+    case .lasso: return "lasso-select"
+    case .text: return "type"
+    } }
+}
 struct ToolSettings: Codable {
     var color = "#2455D6"
     var width: Double = 3

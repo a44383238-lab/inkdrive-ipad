@@ -3,8 +3,7 @@ import PackageDescription
 let package = Package(name: "InkDriveCore", platforms: [.iOS(.v17)], products: [
     .library(name: "InkDriveCore", targets: ["InkDriveCore"])
 ], targets: [
-    .target(name: "InkDriveCore", path: "Core"),
+    .target(name: "InkDriveCore", path: ".", sources: ["Core", "UI"], resources: [.process("Resources/Icons")]),
     .testTarget(name: "InkDriveCoreTests", dependencies: ["InkDriveCore"], path: "Tests"),
-    .target(name: "InkDriveEditor", path: ".", sources: ["Core", "UI"]),
-    .testTarget(name: "InkDriveEditorTests", dependencies: ["InkDriveEditor"], path: "EditorTests")
+    .testTarget(name: "InkDriveEditorTests", dependencies: ["InkDriveCore"], path: "EditorTests")
 ])

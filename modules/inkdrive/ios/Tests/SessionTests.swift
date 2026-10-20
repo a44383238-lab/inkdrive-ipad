@@ -77,4 +77,45 @@ import PencilKit
         XCTAssertNil(try reopened.pendingRecording())
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.appendingPathComponent(".inkdrive/recovery").path).count, 1)
     }
+    func testOneTapRecordingCreatesAndReusesTodaysPDFLesson() throws {
+        let name = "inkdrive.tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = LibraryRepository(defaults: defaults); try repository.choose(folder)
+        let pdf = try repository.createNote(parent: "", name: "오늘 수업", template: "plain")
+        let first = try repository.quickLesson(pdf: pdf, date: "2026-10-20")
+        let second = try repository.quickLesson(pdf: pdf, date: "2026-10-20")
+        XCTAssertEqual(first.id, second.id)
+        XCTAssertEqual(first.pdf, pdf)
+        XCTAssertEqual(try repository.lessons(date: "2026-10-20").count, 1)
+    }
+    func testLocalAudioDraftPublishesExactlyOnceAndRetainsRecoverableDeviceCopy() throws {
+        let name = "inkdrive.tests." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let repository = LibraryRepository(defaults: defaults); try repository.choose(folder)
+        let pdf = try repository.createNote(parent: "", name: "recording", template: "plain")
+        let lesson = try repository.quickLesson(pdf: pdf, date: "2026-10-20")
+        let filename = UUID().uuidString + ".m4a", relative = "Recordings/" + filename
+        let local = try RecordingDrafts.url(filename)
+        defer { try? FileManager.default.removeItem(at: local) }
+        let bytes = Data("recording transport fixture".utf8); try bytes.write(to: local)
+        let pending = PendingRecording(lesson: lesson, relative: relative, finished: true, localFileName: filename)
+        try repository.savePendingRecording(pending)
+        let restarted = LibraryRepository(defaults: defaults)
+        XCTAssertEqual(try restarted.pendingRecording()?.localFileName, filename)
+        let cloud = try restarted.publishRecordingDraft(pending)
+        XCTAssertEqual(try Data(contentsOf: cloud), bytes)
+        _ = try restarted.publishRecordingDraft(pending)
+        XCTAssertEqual(try Data(contentsOf: local), bytes)
+        try Data("unrelated newer version".utf8).write(to: cloud)
+        XCTAssertThrowsError(try restarted.publishRecordingDraft(pending))
+        XCTAssertEqual(try Data(contentsOf: cloud), Data("unrelated newer version".utf8))
+    }
 }

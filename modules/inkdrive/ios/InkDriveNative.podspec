@@ -14,5 +14,6 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
   s.frameworks = 'UIKit', 'PDFKit', 'PencilKit', 'UniformTypeIdentifiers', 'CryptoKit', 'AVFoundation'
   s.source_files = 'Core/**/*.swift', 'UI/**/*.swift', 'InkDriveModule.swift'
+  s.resource_bundles = { 'InkDriveIcons' => ['Resources/Icons/*'] }
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'SWIFT_STRICT_CONCURRENCY' => 'minimal' }
 end

@@ -28,4 +28,4 @@ ditto "$APP" build/Package/Payload/InkDrive.app
   zip -qry ../../artifacts/InkDrive-development-unsigned.ipa Payload
 )
 shasum -a 256 artifacts/InkDrive-development-unsigned.ipa > artifacts/InkDrive-development-unsigned.ipa.sha256
-node -e 'const fs=require("fs");fs.writeFileSync("artifacts/build-info.json",JSON.stringify({name:"InkDrive",configuration:"Debug",developmentClient:true,signed:false,installation:"Sign and install with Sideloadly",commit:process.env.GITHUB_SHA,run:process.env.GITHUB_RUN_ID},null,2))'
+node -e 'const fs=require("fs");fs.writeFileSync("artifacts/build-info.json",JSON.stringify({name:"InkDrive",configuration:"Debug",developmentClient:true,signed:false,installation:"Sign and install with Sideloadly",commit:process.env.GITHUB_SHA ?? process.env.EAS_BUILD_GIT_COMMIT_HASH,run:process.env.GITHUB_RUN_ID ?? process.env.EAS_BUILD_ID},null,2))'

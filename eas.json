@@ -4,6 +4,19 @@
       "developmentClient": true,
       "distribution": "internal",
       "ios": { "simulator": false }
+    },
+    "unsigned-development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "node": "22.16.0",
+      "ios": {
+        "simulator": false,
+        "withoutCredentials": true,
+        "config": "unsigned-ios.yml",
+        "applicationArchivePath": "artifacts/*.ipa",
+        "buildArtifactPaths": ["build/*.log", "build/native-attachments/**", "artifacts/*.json", "artifacts/*.sha256"],
+        "image": "latest"
+      }
     }
   }
 }

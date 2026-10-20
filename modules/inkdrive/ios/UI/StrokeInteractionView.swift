@@ -17,10 +17,6 @@ import PDFKit
         outline.lineDashPattern = [5, 4]; outline.lineWidth = 1.5; layer.addSublayer(outline)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        if event?.allTouches?.contains(where: { $0.type != .pencil }) == true { return nil }
-        return super.hitTest(point, with: event)
-    }
     func clearSelection() { selected.removeAll(); selectionBounds = .null; outline.path = nil }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first, touch.type == .pencil else { return }
@@ -77,9 +73,6 @@ import PDFKit
             if !selected.isEmpty { editor.selectionMenu(self) }
         case .text:
             editor.textGesture(record: overlay.record, from: first, to: endPoint)
-            outline.path = nil
-        case .line, .rectangle, .ellipse:
-            editor.addShape(record: overlay.record, from: first, to: endPoint)
             outline.path = nil
         default: break
         }

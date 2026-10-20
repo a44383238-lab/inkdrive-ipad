@@ -18,6 +18,7 @@ type Bridge = {
   saveLesson(json: string): Promise<void>;
   importRecording(json: string): Promise<void>;
   startRecording(json: string): Promise<void>;
+  quickStartRecording(path: string): Promise<void>;
   stopRecording(): Promise<void>;
   recoverRecording(): Promise<void>;
   archivePendingRecording(): Promise<void>;

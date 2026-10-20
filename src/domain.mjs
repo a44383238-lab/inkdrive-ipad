@@ -41,3 +41,15 @@ export class LatestRequest {
     if (request === this.generation) apply(value);
   }
 }
+/** @param {string} current @param {string} next */
+export function folderDestination(current, next) {
+  if (next) next.split('/').forEach(part => {
+    if (cleanName(part) !== part) throw new Error('잘못된 폴더 경로예요.');
+  });
+  return { path: next, changed: current !== next };
+}
+/** @param {string} path */
+export function parentFolder(path) {
+  folderDestination('', path);
+  return path.split('/').slice(0, -1).join('/');
+}
