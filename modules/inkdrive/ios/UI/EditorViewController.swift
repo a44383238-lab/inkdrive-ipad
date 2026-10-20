@@ -107,7 +107,7 @@ import PencilKit
         recordButton.accessibilityLabel = service.active ? "녹음 종료" : "녹음 시작"
         recordButton.accessibilityValue = service.active ? "녹음 중" : nil
     }
-    @objc private func toggleRecording() {
+    @objc func toggleRecording() {
         guard !startingRecording else { return }
         startingRecording = true; refreshRecordingButton()
         Task {

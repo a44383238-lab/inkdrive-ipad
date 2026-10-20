@@ -63,7 +63,9 @@ import PencilKit
         let invoked = expectation(description: "one tap starts recording")
         var calls = 0; editor.recordingAction = { calls += 1; invoked.fulfill() }
         let button = try XCTUnwrap(descendants(editor.view).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == "녹음 시작" })
-        button.sendActions(for: .touchUpInside)
+        XCTAssertEqual(button.actions(forTarget: editor, forControlEvent: .touchUpInside), ["toggleRecording"])
+        // A Swift-package XCTest host has no UIApplication event dispatcher. Verify the binding above, then invoke its action.
+        editor.toggleRecording()
         await fulfillment(of: [invoked], timeout: 3)
         XCTAssertEqual(calls, 1)
     }
