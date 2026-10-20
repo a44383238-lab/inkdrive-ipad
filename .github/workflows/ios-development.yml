@@ -6,8 +6,8 @@ on:
       runner:
         description: Standard macOS runner
         type: choice
-        options: [macos-26, macos-15]
-        default: macos-26
+        options: [macos-15, macos-26]
+        default: macos-15
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ${{ inputs.runner || 'macos-26' }}
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 60
     env:
       CI: '1'

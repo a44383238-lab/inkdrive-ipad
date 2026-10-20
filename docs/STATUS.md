@@ -4,10 +4,13 @@ The iPad application target is now entirely Swift: SwiftUI library and UIKit/PDF
 
 ## Current verification
 
-- GitHub repository changed to public at the user's explicit request. Standard macOS jobs now start successfully.
-- Standalone arm64 Debug app compiled successfully in run 39429521012, source 512a601.
-- Core/editor/recording-browser regression tests passed in that run. Actual app interaction testing is in progress.
-- Later reference-video refinements (lasso handles/popover, text styles, toolbar boundary and explicit scene metadata) are being validated in the next native build.
+- Public repository confirmed. Standard macOS jobs run without the prior private-repository billing block.
+- Final native run **39434333188**, app source **8caa91131c2a40a244b06049b0ff78284274a53a**, succeeded on standard macos-15 / Xcode16.4. iPadOS18.5 simulator.
+- Physical iPad arm64 Debug app compilation and packaging passed.
+- **28 Swift core/editor/storage/recording-browser tests passed**, plus **one real app interaction scenario** covering library folder navigation, editor opening, recording browser, page navigator, document tabs and return to the library.
+- IPA SHA256: `30406d932bf5c18c87049eb30ed63e4f18b8333a73b7cdd9f59bd919c80af8f0`; 856064 bytes. ZIP CRC, native class symbols, arm64 Mach-O, bundle identifier and iPad support verified. No Expo/React/Hermes/development launcher is packaged.
+- App 0.4.0 (4), minimum iOS17, bundle identifier `app.inkdrive.notes`, unsigned for Sideloadly.
+- macos-15 is now the default CI image after macos-26 simulator boot migration stalled. Runtime selection matches the active Xcode SDK. This is a CI environment choice, not a reduced deployment target.
 - Hardware Pencil input, microphone capture, Sideloadly installation and iCloud synchronization with Windows still need device validation.
 
 ## App flow
