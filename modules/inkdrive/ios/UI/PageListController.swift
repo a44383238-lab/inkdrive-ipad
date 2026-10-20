@@ -6,9 +6,11 @@ import PDFKit
     init(editor: EditorViewController) { self.editor = editor; super.init(style: .insetGrouped) }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); title = "페이지 · 드래그해 순서 변경"
-        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "닫기", style: .done, target: self, action: #selector(done))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "추가", style: .plain, target: self, action: #selector(add))
+        super.viewDidLoad(); title = "페이지"
+        navigationItem.leftBarButtonItem = UIBarButtonItem(image: InkIcons.image("arrow-left"), style: .plain, target: self, action: #selector(done))
+        navigationItem.leftBarButtonItem?.accessibilityLabel = "필기로"
+        navigationItem.rightBarButtonItem = UIBarButtonItem(image: InkIcons.image("plus"), style: .plain, target: self, action: #selector(add))
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "페이지 추가"
         tableView.isEditing = true; tableView.allowsSelectionDuringEditing = true; tableView.rowHeight = 96
     }
     @objc private func done() { dismiss(animated: true) }

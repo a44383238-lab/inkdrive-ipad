@@ -15,7 +15,7 @@
         "config": "unsigned-ios.yml",
         "applicationArchivePath": "artifacts/*.ipa",
         "buildArtifactPaths": ["build/*.log", "build/native-attachments/**", "artifacts/*.json", "artifacts/*.sha256"],
-        "image": "latest"
+        "image": "macos-tahoe-26.5-xcode-26.6"
       }
     }
   }

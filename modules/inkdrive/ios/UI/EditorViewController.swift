@@ -358,7 +358,7 @@ import PencilKit
     private func loadPreset() {
         let presets = (UserDefaults.standard.array(forKey: "inkdrive.presets") as? [Data] ?? []).compactMap { try? JSONDecoder().decode(ToolSettings.self, from: $0) }
         menu("즐겨찾기", actions: presets.enumerated().map { i, value in
-            ("\(i + 1) · \(value.color) · \(value.width)pt", { self.configurations[self.tool.rawValue] = value; self.setTool(self.tool) })
+            ("\(i + 1) · \(value.color) · \(value.width) px", { self.configurations[self.tool.rawValue] = value; self.setTool(self.tool) })
         })
     }
     func selectionMenu(_ selection: StrokeInteractionView) {

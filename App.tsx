@@ -14,7 +14,8 @@ const uid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
 type Form = { type: 'folder' | 'note' | 'lesson'; name: string; subject: string; pdf: string; template: string };
 type Screen = 'library' | 'today' | 'settings';
 
-function LibraryApp() {
+export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
+  const Native = bridge;
   const compact = useWindowDimensions().width < 700;
   const [screen, setScreen] = useState<Screen>('library');
   const [root, setRoot] = useState<string | null>(null);
@@ -124,7 +125,7 @@ function LibraryApp() {
     </View>
     <View style={styles.main}>
       <ScrollView contentContainerStyle={[styles.content, compact && { padding: 20 }]} keyboardShouldPersistTaps="handled">
-        {!Native && <Text style={styles.preview}>미리보기</Text>}
+        {Platform.OS === 'web' && <Text style={styles.preview}>미리보기</Text>}
         {error ? <View style={styles.error}><Text selectable style={styles.errorText}>{error}</Text>{button('다시 확인', () => void run(() => refresh()), true)}</View> : null}
         {recording.active && <View style={styles.recording}><Text style={styles.errorText}>녹음 · {Math.floor(recording.seconds / 60)}분 {Math.floor(recording.seconds % 60)}초</Text>
           {button('종료', () => void run(async () => { await Native?.stopRecording(); await refresh(); }), true)}</View>}

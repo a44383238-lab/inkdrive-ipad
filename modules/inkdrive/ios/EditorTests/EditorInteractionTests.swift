@@ -60,10 +60,11 @@ import PencilKit
     }
     func testRecordButtonStartsWithoutSeparateLessonForm() async throws {
         let editor = try editor(); editor.canRecord = true
-        var calls = 0; editor.recordingAction = { calls += 1 }
+        let invoked = expectation(description: "one tap starts recording")
+        var calls = 0; editor.recordingAction = { calls += 1; invoked.fulfill() }
         let button = try XCTUnwrap(descendants(editor.view).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == "녹음 시작" })
         button.sendActions(for: .touchUpInside)
-        for _ in 0..<100 { if calls > 0 { break }; await Task.yield() }
+        await fulfillment(of: [invoked], timeout: 3)
         XCTAssertEqual(calls, 1)
     }
 }

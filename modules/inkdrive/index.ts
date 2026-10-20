@@ -5,7 +5,7 @@ export type Lesson = {
   recordings: string[]; materials: string[]; endedAt: string | null;
   requestedOutputs: string[];
 };
-type Bridge = {
+export type Bridge = {
   getRoot(): Promise<{ name: string } | null>;
   pickFolder(): Promise<{ name: string } | null>;
   list(path: string): Promise<Entry[]>;
