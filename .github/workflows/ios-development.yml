@@ -28,7 +28,7 @@ jobs:
       - name: iPad regression tests
         run: |
           set -o pipefail
-          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; devices=[d for k,v in json.load(sys.stdin)["devices"].items() if "iOS" in k for d in v if "iPad" in d["name"]]; print(devices[0]["udid"])')
+          DEVICE=$(python3 scripts/select-ipad-simulator.py)
           cd modules/inkdrive/ios
           xcodebuild test -scheme InkDriveCore -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath ../../../build/core-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../../../build/native-tests.log
           xcrun xcresulttool export attachments --path ../../../build/core-tests/Logs/Test/*.xcresult --output-path ../../../build/native-attachments
@@ -36,7 +36,7 @@ jobs:
         timeout-minutes: 12
         run: |
           set -o pipefail
-          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; devices=[d for k,v in json.load(sys.stdin)["devices"].items() if "iOS" in k for d in v if "iPad" in d["name"]]; print(devices[0]["udid"])')
+          DEVICE=$(python3 scripts/select-ipad-simulator.py)
           xcrun simctl shutdown "$DEVICE" || true
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
