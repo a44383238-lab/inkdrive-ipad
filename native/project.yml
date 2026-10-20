@@ -1,0 +1,54 @@
+name: InkDrive
+options:
+  minimumXcodeGenVersion: 2.42.0
+settings:
+  base:
+    SWIFT_VERSION: '5.9'
+    IPHONEOS_DEPLOYMENT_TARGET: '17.0'
+    TARGETED_DEVICE_FAMILY: '2'
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  InkDrive:
+    type: application
+    platform: iOS
+    deploymentTarget: '17.0'
+    sources:
+      - path: Sources
+      - path: ../modules/inkdrive/ios/Core
+      - path: ../modules/inkdrive/ios/UI
+      - path: Assets.xcassets
+      - path: ../modules/inkdrive/ios/Resources/Icons
+        buildPhase: resources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: InkDrive
+        CFBundleShortVersionString: '0.4.0'
+        CFBundleVersion: '4'
+        LSRequiresIPhoneOS: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UIFileSharingEnabled: true
+        NSMicrophoneUsageDescription: 수업 녹음을 필기 PDF와 함께 저장해요.
+        UIBackgroundModes: [audio]
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.inkdrive.notes
+        PRODUCT_NAME: InkDrive
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTS_MACCATALYST: NO
+schemes:
+  InkDrive:
+    build:
+      targets:
+        InkDrive: all
+    run:
+      config: Debug

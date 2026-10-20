@@ -19,24 +19,19 @@ jobs:
       EXPO_NO_TELEMETRY: '1'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Install and verify
+      - name: Prepare Swift project
         run: |
-          npm ci
-          npm test
-          npm run typecheck
-          npx expo install --check
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
           xcodebuild -version
-      - name: Generate iOS application
+      - name: Compile native Swift application
+        run: bash scripts/build-native-ios.sh
+      - name: iPad regression tests
         run: |
-          npx expo prebuild --platform ios --clean --no-install
-          cd ios
-          pod install
-      - name: Compile development application
-        run: bash scripts/build-ios-development.sh
+          set -o pipefail
+          DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; devices=[d for k,v in json.load(sys.stdin)["devices"].items() if "iOS" in k for d in v if "iPad" in d["name"]]; print(devices[0]["udid"])')
+          cd modules/inkdrive/ios
+          xcodebuild test -scheme InkDriveCore -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath ../../../build/core-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../../../build/native-tests.log
+          xcrun xcresulttool export attachments --path ../../../build/core-tests/Logs/Test/*.xcresult --output-path ../../../build/native-attachments
       - name: Upload development IPA
         uses: actions/upload-artifact@v4
         with:
@@ -45,6 +40,8 @@ jobs:
             artifacts/*.ipa
             artifacts/*.sha256
             artifacts/build-info.json
+            build/native-attachments/**
+            build/native-tests.log
           if-no-files-found: error
           retention-days: 7
       - name: Upload build diagnostics

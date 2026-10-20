@@ -1,0 +1,150 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct LibraryEntry: Identifiable {
+    let name: String
+    let path: String
+    let directory: Bool
+    var id: String { path }
+}
+struct OpenDocument: Identifiable { let id = UUID(); let path: String; let externalURL: URL? }
+enum LibraryScreen { case library, today, settings }
+
+@MainActor final class NativeLibraryStore: ObservableObject {
+    let repository = LibraryRepository()
+    @Published var screen = LibraryScreen.library
+    @Published var path = ""
+    @Published var entries: [LibraryEntry] = []
+    @Published var lessons: [LessonRecord] = []
+    @Published var rootName: String?
+    @Published var query = ""
+    @Published var date = NativeLibraryStore.today()
+    @Published var busy = false
+    @Published var message: String?
+    @Published var document: OpenDocument?
+    @Published var textPreview: TextPreview?
+    @Published var activeRecording = false
+    @Published var elapsed = 0.0
+    @Published var pendingRecording = false
+    private var picker: NativePicker?
+    private var timer: Timer?
+    private var lastRecordingError: String?
+    struct TextPreview: Identifiable { let id = UUID(); let title: String; let text: String }
+    static func today() -> String {
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"; formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        return formatter.string(from: Date())
+    }
+    init() {
+        refresh()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in Task { @MainActor in self?.poll() } }
+    }
+    deinit { timer?.invalidate() }
+    var filtered: [LibraryEntry] {
+        entries.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }.sorted {
+            if $0.directory != $1.directory { return $0.directory }
+            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+    var breadcrumbs: [String] { path.split(separator: "/").map(String.init) }
+    var hasRoot: Bool { rootName != nil }
+    func refresh() {
+        rootName = repository.root?.name
+        guard hasRoot else { entries = []; lessons = []; return }
+        do {
+            entries = try repository.list(path).compactMap { value in
+                guard let name = value["name"] as? String, let path = value["path"] as? String, let directory = value["directory"] as? Bool else { return nil }
+                return LibraryEntry(name: name, path: path, directory: directory)
+            }
+            lessons = try repository.lessons(date: date).sorted { ($0.subject, $0.title) < ($1.subject, $1.title) }
+            pendingRecording = (try repository.pendingRecording()) != nil
+        } catch { message = error.localizedDescription }
+        poll()
+    }
+    private func poll() {
+        let service = RecordingService.shared
+        let ended = activeRecording && !service.active
+        activeRecording = service.active; elapsed = service.seconds
+        if let error = service.lastError, error != lastRecordingError { message = error; lastRecordingError = error }
+        if ended { refresh() }
+    }
+    func run(_ action: @escaping @MainActor () async throws -> Void) {
+        guard !busy else { return }; busy = true
+        Task {
+            defer { busy = false }
+            do { try await action(); refresh() } catch { message = error.localizedDescription }
+        }
+    }
+    func navigate(_ next: String) {
+        do {
+            if !next.isEmpty { let scope = try repository.access(); _ = try FileNames.child(next, in: scope.url) }
+            path = next; query = ""; refresh()
+        } catch { message = error.localizedDescription }
+    }
+    func parent() { navigate(breadcrumbs.dropLast().joined(separator: "/")) }
+    func open(_ entry: LibraryEntry) {
+        if entry.directory { navigate(entry.path) }
+        else if entry.path.lowercased().hasSuffix(".pdf") { document = OpenDocument(path: entry.path, externalURL: nil) }
+        else {
+            do { textPreview = TextPreview(title: entry.name, text: try repository.readText(entry.path)) }
+            catch { message = error.localizedDescription }
+        }
+    }
+    func create(name: String, folder: Bool, template: PaperTemplate) throws {
+        if folder { try repository.createFolder(parent: path, name: name) }
+        else { _ = try repository.createNote(parent: path, name: name, template: template.rawValue) }
+        refresh()
+    }
+    func chooseFolder() {
+        guard !activeRecording, !pendingRecording else { message = "녹음 종료·복구 후 폴더를 바꿔 주세요."; return }
+        run {
+            let picker = NativePicker(); self.picker = picker; defer { self.picker = nil }
+            guard let url = try await picker.pick(types: [.folder], from: Self.presenter()) else { return }
+            try self.repository.choose(url); self.path = ""; self.query = ""
+        }
+    }
+    func choosePDF() {
+        run {
+            let picker = NativePicker(); self.picker = picker; defer { self.picker = nil }
+            guard let url = try await picker.pick(types: [.pdf], from: Self.presenter()) else { return }
+            self.document = OpenDocument(path: url.lastPathComponent, externalURL: url)
+        }
+    }
+    func importRecording(_ lesson: LessonRecord) {
+        guard !activeRecording else { return }
+        run {
+            let picker = NativePicker(); self.picker = picker; defer { self.picker = nil }
+            guard let url = try await picker.pick(types: [.audio, .mpeg4Movie], from: Self.presenter()) else { return }
+            var current = try self.repository.lessons(date: lesson.date).first { $0.id == lesson.id } ?? lesson
+            try self.repository.importRecording(url, lesson: &current)
+        }
+    }
+    func finishLesson(_ lesson: LessonRecord) {
+        run {
+            if RecordingService.shared.active { try await RecordingService.shared.stop() }
+            var current = try self.repository.lessons(date: lesson.date).first { $0.id == lesson.id } ?? lesson
+            current.endedAt = current.endedAt == nil ? ISO8601DateFormatter().string(from: Date()) : nil
+            try self.repository.saveLesson(current)
+        }
+    }
+    func stopRecording() { run { try await RecordingService.shared.stop() } }
+    func recoverRecording() { run { try self.repository.recoverPending() } }
+    func showRecordings(_ pdf: String, from presenter: UIViewController? = nil) throws {
+        let source = try repository.recordings(for: pdf)
+        let browser = RecordingBrowserController(rows: source.rows, scope: source.scope)
+        let navigation = UINavigationController(rootViewController: browser); navigation.modalPresentationStyle = .pageSheet
+        navigation.sheetPresentationController?.detents = [.medium(), .large()]; navigation.sheetPresentationController?.prefersGrabberVisible = true
+        let target = try presenter ?? Self.presenter()
+        guard target.presentedViewController == nil else { throw InkError.busy }
+        target.present(navigation, animated: true)
+    }
+    static func presenter() throws -> UIViewController {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.filter { $0.activationState == .foregroundActive }
+        guard var controller = scenes.flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController else { throw InkError.unavailable }
+        while let next = controller.presentedViewController { controller = next }
+        return controller
+    }
+}
+
+extension LibraryRepository {
+    func recoverPending() throws { try RecordingService.shared.recover(repository: self) }
+}

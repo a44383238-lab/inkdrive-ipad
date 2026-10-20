@@ -17,3 +17,4 @@ build/
 !/.eas/
 !/.eas/build/
 !/.eas/build/**
+native/InkDrive.xcodeproj/
