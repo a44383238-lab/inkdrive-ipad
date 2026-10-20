@@ -33,11 +33,19 @@ jobs:
           xcodebuild test -scheme InkDriveCore -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath ../../../build/core-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../../../build/native-tests.log
           xcrun xcresulttool export attachments --path ../../../build/core-tests/Logs/Test/*.xcresult --output-path ../../../build/native-attachments
       - name: Standalone app interaction tests
+        timeout-minutes: 12
         run: |
           set -o pipefail
           DEVICE=$(xcrun simctl list devices available --json | python3 -c 'import sys,json; devices=[d for k,v in json.load(sys.stdin)["devices"].items() if "iOS" in k for d in v if "iPad" in d["name"]]; print(devices[0]["udid"])')
+          xcrun simctl shutdown "$DEVICE" || true
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
           xcodebuild test -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-tests.log
-          xcrun xcresulttool export attachments --path build/app-tests/Logs/Test/*.xcresult --output-path build/app-attachments
+      - name: Export app screenshots
+        if: always()
+        run: |
+          RESULT=$(find build/app-tests/Logs/Test -maxdepth 1 -name '*.xcresult' -type d 2>/dev/null | head -1 || true)
+          if [ -n "$RESULT" ]; then xcrun xcresulttool export attachments --path "$RESULT" --output-path build/app-attachments || true; fi
       - name: Upload development IPA
         uses: actions/upload-artifact@v4
         with:
@@ -57,6 +65,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: InkDrive-diagnostics-${{ github.run_number }}
-          path: build/*.log
+          path: |
+            build/*.log
+            build/app-attachments/**
           if-no-files-found: ignore
           retention-days: 3
