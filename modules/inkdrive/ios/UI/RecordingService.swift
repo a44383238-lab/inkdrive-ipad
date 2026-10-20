@@ -24,7 +24,12 @@ import UIKit
             let pendingURL = try pending.localFileName.map(RecordingDrafts.url) ?? FileNames.child(pending.relative, in: root.url)
             let size = (try? pendingURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             if size == 0 { try repository.clearPendingRecording() }
-            else { try recover(repository: repository) }
+            else {
+                // Inspect without playback. A failed microphone start may leave only an M4A header.
+                let duration = (try? AVAudioPlayer(contentsOf: pendingURL).duration) ?? 0
+                if duration > 0 { try recover(repository: repository) }
+                else { try repository.archivePendingRecording() }
+            }
         }
         guard try repository.pendingRecording() == nil else {
             throw NSError(domain: "InkDrive", code: 2, userInfo: [NSLocalizedDescriptionKey: "복구 대기 녹음이 있어요. 먼저 녹음 복구를 실행해 주세요."])

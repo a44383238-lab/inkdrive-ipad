@@ -1,6 +1,7 @@
 import UIKit
 import PDFKit
 import PencilKit
+import AVFoundation
 
 @MainActor final class EditorViewController: UIViewController, UIPencilInteractionDelegate, UIGestureRecognizerDelegate, UIPopoverPresentationControllerDelegate {
     let session: EditorSession
@@ -121,10 +122,12 @@ import PencilKit
                     try await recordingAction()
                 }
             } catch {
-                let alert = UIAlertController(title: "녹음을 시작하지 못했어요", message: error.localizedDescription, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "설정", style: .default) { _ in
-                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-                })
+                let alert = UIAlertController(title: "녹음", message: error.localizedDescription, preferredStyle: .alert)
+                if AVAudioSession.sharedInstance().recordPermission == .denied {
+                    alert.addAction(UIAlertAction(title: "설정", style: .default) { _ in
+                        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    })
+                }
                 alert.addAction(UIAlertAction(title: "확인", style: .cancel))
                 present(alert, animated: true)
             }
