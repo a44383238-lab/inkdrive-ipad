@@ -167,6 +167,6 @@ struct CreationSheet: View {
                     ToolbarItem(placement: .topBarLeading) { Button("취소") { dismiss() } }
                     ToolbarItem(placement: .topBarTrailing) { Button("만들기") { do { try store.create(name: name, folder: request.folder, template: template); dismiss() } catch { self.error = error.localizedDescription } }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
                 }
-        }.presentationDetents([.medium()])
+        }.presentationDetents([.medium])
     }
 }

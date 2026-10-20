@@ -45,6 +45,18 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
         SUPPORTS_MACCATALYST: NO
+  InkDriveUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: '17.0'
+    sources: [UITests]
+    dependencies:
+      - target: InkDrive
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.inkdrive.notes.uitests
+        TEST_TARGET_NAME: InkDrive
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   InkDrive:
     build:
@@ -52,3 +64,6 @@ schemes:
         InkDrive: all
     run:
       config: Debug
+    test:
+      config: Debug
+      targets: [InkDriveUITests]

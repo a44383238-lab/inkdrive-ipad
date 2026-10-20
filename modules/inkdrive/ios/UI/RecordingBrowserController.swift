@@ -66,7 +66,7 @@ enum RecordingCatalog {
         time.text = "00:00 / 00:00"; stack.addArrangedSubview(time)
         let controls = UIStackView(); controls.alignment = .center; controls.spacing = 12
         let back = InkIcons.button("skip-back", label: "10초 뒤로"); back.addTarget(self, action: #selector(backward), for: .touchUpInside)
-        let forward = InkIcons.button("skip-forward", label: "10초 앞으로"); forward.addTarget(self, action: #selector(forward), for: .touchUpInside)
+        let nextButton = InkIcons.button("skip-forward", label: "10초 앞으로"); nextButton.addTarget(self, action: #selector(forward), for: .touchUpInside)
         playButton.isEnabled = false; playButton.addTarget(self, action: #selector(togglePlay), for: .touchUpInside)
         speed.setTitle("1×", for: .normal); speed.accessibilityLabel = "재생 속도"; speed.showsMenuAsPrimaryAction = true
         speed.heightAnchor.constraint(equalToConstant: 44).isActive = true; speed.widthAnchor.constraint(equalToConstant: 58).isActive = true
@@ -74,7 +74,7 @@ enum RecordingCatalog {
             guard let self else { return }; self.rate = Float(value); self.speed.setTitle("\(value)×", for: .normal)
             if self.player?.rate != 0 { self.player?.rate = self.rate }
         } })
-        [back, playButton, forward, UIView(), loading, speed].forEach(controls.addArrangedSubview)
+        [back, playButton, nextButton, UIView(), loading, speed].forEach(controls.addArrangedSubview)
         stack.addArrangedSubview(controls); tableView.tableHeaderView = header
         interruptToken = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.pause() }

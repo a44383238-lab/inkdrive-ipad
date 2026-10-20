@@ -35,6 +35,18 @@ enum LibraryScreen { case library, today, settings }
         return formatter.string(from: Date())
     }
     init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-smoke") {
+            do {
+                let folder = FileManager.default.temporaryDirectory.appendingPathComponent("InkDrive-preview-\(UUID().uuidString)", isDirectory: true)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try repository.choose(folder)
+                for subject in ["통계학", "산업데이터과학", "작업설계", "강의자료"] { try repository.createFolder(parent: "", name: subject) }
+                _ = try repository.createNote(parent: "통계학", name: "강의 1", template: "ruled")
+                _ = try repository.createNote(parent: "통계학", name: "강의 2", template: "grid")
+            } catch { message = error.localizedDescription }
+        }
+        #endif
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in Task { @MainActor in self?.poll() } }
     }
