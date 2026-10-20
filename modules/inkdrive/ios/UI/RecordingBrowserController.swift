@@ -118,10 +118,10 @@ enum RecordingCatalog {
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let row = rows[indexPath.row], cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
         cell.textLabel?.text = row.title
-        cell.detailTextLabel?.text = durations[row.path].map(Self.timestamp) ?? URL(fileURLWithPath: row.path).lastPathComponent
+        cell.detailTextLabel?.text = durations[row.path].map(Self.timestamp) ?? "—:—"
         cell.imageView?.image = InkIcons.image("play"); cell.tintColor = UIColor(hex: "#3665BF")
         cell.accessoryType = selection == indexPath.row ? .checkmark : .none
-        cell.accessibilityLabel = "\(row.title), 녹음 선택"
+        cell.accessibilityLabel = "\(row.title), 녹음 재생"
         return cell
     }
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
@@ -162,6 +162,7 @@ enum RecordingCatalog {
                 }
                 selection = indexPath.row; name.text = row.title; seek.maximumValue = Float(loaded); seek.value = 0; seek.isEnabled = true; playButton.isEnabled = true
                 time.text = "00:00 / \(Self.timestamp(loaded))"; tableView.reloadData()
+                togglePlay() // Selecting a recording is an explicit playback action; opening the list remains silent.
             } catch {
                 if let local { try? FileManager.default.removeItem(at: local) }
                 if request == generation { name.text = "다시 선택해 주세요"; show(error) }

@@ -1,3 +1,11 @@
+# Current native build
+
+Version 0.4 uses `native/project.yml` and `scripts/build-native-ios.sh`. Dispatch `.github/workflows/ios-development.yml` on the public repository. The standard macOS runner creates an unsigned standalone Swift IPA and runs core plus real app interaction tests. Install with Sideloadly; no server URL or Metro connection is needed. An Apple account/signature is still required for installation.
+
+The following content is retained as the history of the earlier Expo development client.
+
+---
+
 # iPad 개발용 빌드
 
 ## 빌드 방식

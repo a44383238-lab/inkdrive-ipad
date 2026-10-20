@@ -271,7 +271,8 @@ import AVFoundation
         super.viewDidLayoutSubviews()
         floating.frame.size.width = min(CGFloat(tools.arrangedSubviews.count * 48 + 212), view.bounds.width - 24)
         floating.frame.origin.x = min(max(12, floating.frame.origin.x), max(12, view.bounds.width - floating.frame.width - 12))
-        floating.frame.origin.y = min(max(view.safeAreaInsets.top + 56, floating.frame.origin.y), max(view.safeAreaInsets.top + 56, view.bounds.height - floating.frame.height - view.safeAreaInsets.bottom))
+        let minimumY = view.safeAreaInsets.top + (openDocument == nil ? 56 : 104)
+        floating.frame.origin.y = min(max(minimumY, floating.frame.origin.y), max(minimumY, view.bounds.height - floating.frame.height - view.safeAreaInsets.bottom))
         viewport.configure(pdfView)
     }
     private func iconButton(_ icon: String, label: String, action: Selector) -> UIButton {
@@ -427,8 +428,11 @@ import AVFoundation
     private func textOptions() {
         menu("텍스트 설정", actions: [
             ("기본 글꼴", { self.updateSettings { $0.font = "system" } }),
+            ("Helvetica", { self.updateSettings { $0.font = "Helvetica" } }),
             ("세리프 글꼴", { self.updateSettings { $0.font = "serif" } }),
             ("고정폭 글꼴", { self.updateSettings { $0.font = "mono" } }),
+            ("굵게 전환", { self.updateSettings { $0.textTraits = ($0.textTraits ?? 0) ^ UIFontDescriptor.SymbolicTraits.traitBold.rawValue } }),
+            ("기울임 전환", { self.updateSettings { $0.textTraits = ($0.textTraits ?? 0) ^ UIFontDescriptor.SymbolicTraits.traitItalic.rawValue } }),
             ("왼쪽 정렬", { self.updateSettings { $0.alignment = NSTextAlignment.left.rawValue } }),
             ("가운데 정렬", { self.updateSettings { $0.alignment = NSTextAlignment.center.rawValue } }),
             ("오른쪽 정렬", { self.updateSettings { $0.alignment = NSTextAlignment.right.rawValue } })
@@ -449,13 +453,13 @@ import AVFoundation
         })
     }
     func selectionMenu(_ selection: StrokeInteractionView) {
-        menu("선택한 획 · 선택 테두리를 드래그하면 이동", actions: [
-            ("복사", { selection.copySelection() }), ("잘라내기", { selection.copySelection(); selection.deleteSelection() }),
-            ("붙여넣기", { selection.paste() }), ("삭제", { selection.deleteSelection() }),
-            ("현재 색상 적용", { selection.recolor(self.settings.uiColor) }),
-            ("현재 굵기 적용", { selection.rewidth(self.settings.width) }),
-            ("크기 120%", { selection.scaleSelection(1.2) }), ("크기 80%", { selection.scaleSelection(0.8) })
-        ])
+        guard presentedViewController == nil else { return }
+        let controller = SelectionPopoverController(selection: selection, width: settings.width)
+        controller.popoverPresentationController?.sourceView = selection
+        controller.popoverPresentationController?.sourceRect = selection.selectedBounds
+        controller.popoverPresentationController?.passthroughViews = [selection]
+        controller.popoverPresentationController?.delegate = self
+        present(controller, animated: true)
     }
     private func pagePoint(_ point: CGPoint, record: NotebookPage) -> CGPoint {
         let crop = record.page.bounds(for: .cropBox)

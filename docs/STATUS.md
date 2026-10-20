@@ -1,57 +1,25 @@
-# 2026-10-20 현황
+# InkDrive 0.4 — standalone Swift app
 
-**최신 버전은 0.2다.** 실제 iPad용 개발 빌드와 Swift 검사23개, JavaScript 검사20개가 통과했다. 최신 변경·실기기 확인 범위는 CHANGES-0.2.md를 따른다. 아래는 최초0.1 구현 기록을 포함한다.
+The iPad application target is now entirely Swift: SwiftUI library and UIKit/PDFKit/PencilKit editor. It does not contain Expo, React, Hermes or a development launcher. The Windows lecture-processing helper remains a separate tool.
 
-**개발용 IPA 빌드 완료. 실기기 검증은 남아 있다.** GitHub Mac 환경의 Xcode26.6으로 실제 iPad용 arm64 Debug 앱을 컴파일하고 서명 전 IPA를 생성했다. 실행39392434096, 앱 소스 커밋40da3a0이다. Sideloadly에서 서명·설치한다.
+## Current verification
 
-## 작성한 기능
+- GitHub repository changed to public at the user's explicit request. Standard macOS jobs now start successfully.
+- Standalone arm64 Debug app compiled successfully in run 39429521012, source 512a601.
+- Core/editor/recording-browser regression tests passed in that run. Actual app interaction testing is in progress.
+- Later reference-video refinements (lasso handles/popover, text styles, toolbar boundary and explicit scene metadata) are being validated in the next native build.
+- Hardware Pencil input, microphone capture, Sideloadly installation and iCloud synchronization with Windows still need device validation.
 
-- 서재 폴더 선택, 하위 폴더 탐색·검색·생성, PDF 노트 생성(무지/줄/모눈), 외부 PDF 원본 선택.
-- PencilKit 펜·연필·형광펜, 색상·굵기·불투명도, 직선 형광펜, 획/부분 지우개, 선택 대상별 획 지우기, 설정 기억·즐겨찾기.
-- 올가미 획 선택·이동·복사·잘라내기·붙여넣기·삭제·색상·굵기·80/120% 크기 조절.
-- 텍스트 상자·글꼴·크기·색상·정렬·이동·상자 크기 수정, 직선/사각형/타원·채우기, 페이지 추가·삭제·재정렬, 전역 undo/redo.
-- 이동 가능한 도구 막대, Pencil 2 측면 더블 탭, 두 손가락 더블 탭 undo. 실제 동작은 iPad 검증 필요.
-- 같은 PDF의 원자적 덮어쓰기, 외부 변경/파일 버전 충돌 시 저장 중단, 원본 주석 보존, 저장 실패 시 편집기 유지·복구 사본 공유.
-- 수업 날짜·과목·필기 PDF·녹음 연결, 직접 녹음/기존 녹음 가져오기, 녹음 복구 기록, 수업 종료 시 입력 SHA256 작성.
-- 22시 준비 작업 생성, 5분 단위 로컬 전사·2초 문맥 겹침·재개, 중복 처리 방지, 입력 변경 시 새 작업, AI 결과 폴더와 Markdown/TXT 열기.
+## App flow
 
-## 현재 확인한 것
+1. Sign/install the Swift IPA with Sideloadly using the existing bundle identifier. Do not delete the installed app merely to update it.
+2. Select the InkDrive iCloud folder as the library root.
+3. Open a PDF and use the single microphone button to start/stop recording. The app chooses the PDF/date association automatically.
+4. The recording-list icon opens all saved recordings for the current PDF. Selecting a recording plays it; the list itself never autoplays. Seek, skip 10 seconds and choose 0.5–2× speed.
+5. Mark the class ended in the class screen. The existing notebook automation/manual button handles transcription, detailed notes and review questions.
 
-| 항목 | 결과 |
-|---|---|
-| JavaScript 동작 테스트 | 18/18 통과 |
-| TypeScript 검사 | 통과 |
-| Expo 버전 호환 검사 | 통과 |
-| Expo 설정 해석 | 통과 |
-| iOS 로컬 모듈 자동 연결 탐색 | InkDriveModule 발견 |
-| Swift 문법 파싱 | 20파일, 문법 오류0; 타입 검사/컴파일과 다름 |
-| 실제 한국어 합성음성 전사 | 약9.77초,2구간 생성·다시 실행 시 캐시 재사용 확인 |
-| 합성 수업 전체 처리 | 실제 로컬 전사 → ChatGPT 로그인 AI 작업 → 노트/문제 PDF → 완료 기록 성공, 약4분37초 |
-| Swift 테스트 | iPad 시뮬레이터에서 13/13 통과, GitHub 실행39391400158 |
-| 전체 네이티브 개발 빌드 | 실제 iPad용 Debug 컴파일·링크·IPA 패키징 성공, 실행39392434096 |
-| iPad Pencil/녹음/iCloud/저장 | 실기기 미검증 |
-| Windows에서 필기 PDF 렌더링 | 실제 저장본 미검증 |
-| 실제 장시간 강의 → 노트/문제 전체 생성 | 아직 유효 수업 입력으로 미검증 |
-| 밤22시 예약 | ID22 ACTIVE; 첫 실수업 자동 실행 성공과는 별개 |
+## Reference functions
 
-## 노트북 수동 실행
+Folder icon grid; hard library root; compact icon tools; per-tool color/width(px)/opacity; presets; toolbar positioning; Pencil writing/finger pan; Pencil 2 double-tap; two-finger undo; erasers; lasso copy/cut/paste/delete/color/width/size/rotation; text font/size/color/alignment/styles; recent document tabs; page thumbnails, add/delete/reorder, outline, bookmarks, search and page-number jump.
 
-바탕화면의 **InkDrive 수업 정리**를 열고 **지금 수업 정리**를 누른다. 날짜를 고르거나 최근7일의 미처리 수업을 함께 확인할 수 있다. 실행 중 중복 클릭은 같은 작업을 사용하고, 이미 결과가 검증된 입력은 다시 처리하지 않는다. 이 창의 실제 클릭으로 iCloud 서재를 조회하고 '처리할 새 수업 없음' 표시까지 확인했다. 현재 실제 수업 자료는 아직 없다.
-
-수동 실행은 기존 ChatGPT 로그인으로 Codex CLI를 호출하며 별도 유료 API 키를 넘기지 않는다. 예약과 수동 작업은 같은 파일 잠금을 사용한다. 버튼은 노트북에서만 열리는 로컬 창이며 iPad의 원격 실행 버튼은 추가하지 않았다.
-
-합성음성 결과에는 '관측값의'를 '관측값에'로 인식한 조사 오류가 있었다. 짧은 실행 점검은 장시간 수업 정확도 확인이 아니다.
-
-## 최초 실행 순서
-
-1. 생성한 개발용 IPA를 Sideloadly에서 Apple ID로 서명·설치한다. 실제 설치는 아직 수행하지 않았다. 개발 서버 연결은 DEVELOPMENT-BUILD.md를 따른다.
-2. iPad에서 iCloud Drive의 **InkDrive** 폴더를 서재로 선택한다. Windows에서는 `C:\Users\손혁진\iCloudDrive\InkDrive`로 연결돼 있다.
-3. 과목 폴더/노트를 만들거나 PDF를 서재에 두고 수업을 연결한다. 수업 시작 시 녹음하고 종료 후 녹음 종료·수업 종료를 누른다.
-4. 밤22시에 노트북/Codex/iCloud가 실행 중이면 자료 검사를 시작한다. 입력이 늦게 도착하면 다음 예약 때 최근7일의 미처리 수업도 확인한다.
-5. 결과는 같은 서재의 `AI/날짜/작업ID/`에 둔다. 원본은 수정하지 않는다.
-
-## 배포 전 남은 것
-
-Sideloadly 서명·설치, 실제 iPad 필기·권한·복구·iCloud 검증, Windows PDF 대조, 실제 긴 강의 전체 처리와 전사 검증, 의존성 감사 항목 재점검이 남는다.
-
-사용자 후속 지시로 비공개 GitHub 저장소 생성·push·Actions 개발용 IPA 빌드를 실행했다. EAS 빌드, App Store 배포, 유료 Apple 멤버십 가입은 하지 않았다.
+See STATUS-0.2-history.md for historical Expo-era checks. Those Metro/launcher instructions do not apply to the standalone Swift application.

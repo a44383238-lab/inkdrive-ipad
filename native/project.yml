@@ -30,6 +30,8 @@ targets:
         LSRequiresIPhoneOS: true
         LSSupportsOpeningDocumentsInPlace: true
         UIFileSharingEnabled: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
         NSMicrophoneUsageDescription: 수업 녹음을 필기 PDF와 함께 저장해요.
         UIBackgroundModes: [audio]
         UILaunchScreen: {}

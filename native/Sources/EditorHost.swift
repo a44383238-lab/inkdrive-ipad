@@ -44,7 +44,8 @@ struct EditorHost: UIViewControllerRepresentable {
     }
     private func configure(_ editor: EditorViewController) {
         let repo = store.repository
-        let key = "inkdrive.document-tabs." + CoordinatedStore.digest(Data((store.rootName ?? "InkDrive").utf8))
+        let rootID = (try? repo.access().url.absoluteString) ?? store.rootName ?? "InkDrive"
+        let key = "inkdrive.document-tabs." + CoordinatedStore.digest(Data(rootID.utf8))
         let previous = UserDefaults.standard.stringArray(forKey: key) ?? []
         editor.documentPath = document.path; editor.documentPaths = Array(([document.path] + previous.filter { $0 != document.path }).prefix(8))
         UserDefaults.standard.set(editor.documentPaths, forKey: key)

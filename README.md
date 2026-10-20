@@ -1,21 +1,31 @@
 # InkDrive
 
-iPad-first PDF notebook. Expo 56 hosts the library; Swift/PDFKit/PencilKit owns the editor and coordinated, in-place file access. iPadOS 17+, iPad Pro M2 / Pencil 2 baseline.
+Standalone iPad PDF notebook written in SwiftUI, UIKit, PDFKit and PencilKit. iPadOS 17+, iPad Pro M2 / Pencil 2 baseline. The 0.4 iPad app needs no JavaScript runtime, Expo account, Metro server, launch URL, or running notebook computer for writing and recording.
+
+## Native app
+
+- `native/Sources/`: SwiftUI library, folders, class summaries, settings and editor presentation.
+- `modules/inkdrive/ios/Core/` and `UI/`: reusable Swift file access, PDF editing, Pencil input, recording and playback.
+- `native/project.yml`: XcodeGen application and UI test targets.
+- `.github/workflows/ios-development.yml`: manually dispatched standard macOS runner; compiles the app, runs core and actual app interaction tests, exports an unsigned arm64 Debug IPA.
+- Sign and install the resulting IPA with Sideloadly. The existing bundle identifier `app.inkdrive.notes` is preserved. Apple signing requirements still apply.
+- Root React/Expo files describe the earlier 0.1–0.3 host and are retained as development history; they are excluded from the native application target and native build.
+
+On a Mac: install Xcode and XcodeGen, then run `bash scripts/build-native-ios.sh`. GitHub push/build execution follows the user's authorization. The repository was made public at the user's request on 2026-10-20; use standard macOS runners, not paid larger runners.
+
+## Storage and input
+
+Choose an iCloud Drive folder as the library root. Pencil writes; fingers pan and zoom. In-place PDF updates preserve external annotations. Conflicts stop overwrite and preserve the editor for recovery. Library navigation never goes above the selected root.
+
+Start and stop recording from the editor microphone. PDF and date association is automatic. The adjacent recording-list icon opens that PDF's recordings across dates, with playback, seeking, 10-second skips and 0.5–2x speed. Recordings are never deleted by hiding duplicate list entries. Mark a class ended in the class screen so the nightly process can verify its complete inputs.
+
+The reference video also informs movable toolbars, quick pen presets, anchored tool/selection settings, lasso editing, text formatting, document tabs, page thumbnails, outline, bookmarks, search and page-number navigation. Hardware Pencil input, microphone capture and cross-device iCloud synchronization require iPad checks beyond simulator tests.
 
 ## Workspace rules
 
-- `../sources/` is a read-only project mirror. This app never writes there.
-- A private GitHub repository and manually dispatched Actions workflows were authorized by the user. Run 39392434096 produced an unsigned arm64 Debug development IPA; run 39391400158 passed all 13 iPad simulator core tests. No EAS build or App Store submission was run.
-- The IPA contains the Expo development client and Swift module. Sign and install with Sideloadly, then connect to the local Metro server. Expo Go cannot run the module. See docs/DEVELOPMENT-BUILD.md.
-- A Windows JavaScript test pass is not proof of iOS compilation or iCloud interoperability.
-
-## Local checks (no IPA)
-
-`npm ci`, `npm test`, `npm run typecheck`, `npx expo config --type public`, `npx expo-modules-autolinking resolve --platform ios`.
-
-Native tests live in `modules/inkdrive/ios/Tests`. Run with the iOS Swift package test target on an iPad simulator on a Mac, after explicit build authorization. Do not run `eas build`, `expo run:ios`, `xcodebuild`, or any GitHub push without the user's instruction.
-
-See `docs/STATUS.md` for the exact verification boundary and `docs/ARCHITECTURE.md` for the file lifecycle.
+- `../sources/` is read-only reference material.
+- No lecture recordings, PDFs, local configuration or credentials belong in Git.
+- Windows helper code remains separate from the iPad app. It continues to use the existing ChatGPT subscription and local transcription, without adding a paid AI API.
 
 ## Notebook manual button
 

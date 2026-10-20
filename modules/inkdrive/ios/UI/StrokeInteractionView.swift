@@ -8,6 +8,9 @@ import PDFKit
     private(set) var selected = Set<Int>()
     private var moving = false
     private var selectionBounds: CGRect = .null
+    var selectedBounds: CGRect { selectionBounds }
+    private var resizeCorner: CGPoint?
+    private var resizeAnchor: CGPoint?
     private let outline = CAShapeLayer()
     private var endPoint: CGPoint = .zero
     override init(frame: CGRect) {
@@ -21,12 +24,21 @@ import PDFKit
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }) else { return }
         let point = touch.location(in: self); points = [point]; endPoint = point
+        resizeCorner = nil; resizeAnchor = nil
+        if !selected.isEmpty, !selectionBounds.isNull, overlay?.editor?.tool == .lasso {
+            let corners = [CGPoint(x: selectionBounds.minX, y: selectionBounds.minY), CGPoint(x: selectionBounds.maxX, y: selectionBounds.minY), CGPoint(x: selectionBounds.maxX, y: selectionBounds.maxY), CGPoint(x: selectionBounds.minX, y: selectionBounds.maxY)]
+            if let corner = corners.first(where: { hypot(point.x - $0.x, point.y - $0.y) < 18 }) {
+                resizeCorner = corner; resizeAnchor = CGPoint(x: corner.x == selectionBounds.minX ? selectionBounds.maxX : selectionBounds.minX, y: corner.y == selectionBounds.minY ? selectionBounds.maxY : selectionBounds.minY)
+                moving = false; return
+            }
+        }
         moving = !selected.isEmpty && selectionBounds.insetBy(dx: -12, dy: -12).contains(point)
         if !moving { clearSelection() }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }), let first = points.first else { return }
         endPoint = touch.location(in: self); points.append(endPoint)
+        if let anchor = resizeAnchor { drawBounds(CGRect(x: min(anchor.x, endPoint.x), y: min(anchor.y, endPoint.y), width: abs(endPoint.x - anchor.x), height: abs(endPoint.y - anchor.y))); return }
         let path = UIBezierPath()
         if moving { path.append(UIBezierPath(rect: selectionBounds.offsetBy(dx: endPoint.x - first.x, dy: endPoint.y - first.y))) }
         else if overlay?.editor?.tool == .lasso { path.move(to: first); points.dropFirst().forEach { path.addLine(to: $0) } }
@@ -35,7 +47,7 @@ import PDFKit
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard touches.contains(where: { $0.type == .pencil }) else { return }
-        points = []; outline.path = nil
+        points = []; resizeCorner = nil; resizeAnchor = nil; updateSelectionBounds()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }), let overlay, let editor = overlay.editor, let first = points.first else { return }
@@ -63,7 +75,14 @@ import PDFKit
             editor.session.changeDrawing(pageID: overlay.record.id, to: PKDrawing(strokes: strokes)); outline.path = nil
             if editor.settings.returnToPen { editor.setTool(.pen) }
         case .lasso:
-            if moving {
+            if let anchor = resizeAnchor, let corner = resizeCorner {
+                let x = abs(corner.x - anchor.x) > 0.1 ? (endPoint.x - anchor.x) / (corner.x - anchor.x) : 1
+                let y = abs(corner.y - anchor.y) > 0.1 ? (endPoint.y - anchor.y) / (corner.y - anchor.y) : 1
+                let transform = CGAffineTransform(translationX: -anchor.x, y: -anchor.y)
+                    .concatenating(CGAffineTransform(scaleX: min(5, max(0.1, x)), y: min(5, max(0.1, y))))
+                    .concatenating(CGAffineTransform(translationX: anchor.x, y: anchor.y))
+                transformSelected(transform)
+            } else if moving {
                 let transform = CGAffineTransform(translationX: endPoint.x - first.x, y: endPoint.y - first.y)
                 transformSelected(transform)
             } else {
@@ -79,12 +98,19 @@ import PDFKit
             outline.path = nil
         default: break
         }
-        points = []
+        points = []; resizeCorner = nil; resizeAnchor = nil
     }
     private func updateSelectionBounds() {
         guard let drawing = overlay?.record.drawing else { return }
         selectionBounds = selected.filter { drawing.strokes.indices.contains($0) }.reduce(CGRect.null) { $0.union(drawing.strokes[$1].renderBounds) }
-        outline.path = selectionBounds.isNull ? nil : UIBezierPath(rect: selectionBounds).cgPath
+        drawBounds(selectionBounds)
+    }
+    private func drawBounds(_ rect: CGRect) {
+        guard !rect.isNull else { outline.path = nil; return }
+        let path = UIBezierPath(rect: rect)
+        for corner in [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)] {
+            path.append(UIBezierPath(ovalIn: CGRect(x: corner.x - 4, y: corner.y - 4, width: 8, height: 8)))
+        }; outline.path = path.cgPath
     }
     func transformSelected(_ transform: CGAffineTransform) {
         mutate { stroke in PKStroke(ink: stroke.ink, path: stroke.path, transform: stroke.transform.concatenating(transform), mask: stroke.mask) }
@@ -94,6 +120,11 @@ import PDFKit
         let x = selectionBounds.minX, y = selectionBounds.minY
         let transform = CGAffineTransform(translationX: -x, y: -y).concatenating(CGAffineTransform(scaleX: factor, y: factor)).concatenating(CGAffineTransform(translationX: x, y: y))
         transformSelected(transform)
+    }
+    func rotateSelection(_ angle: CGFloat) {
+        guard angle.isFinite, !selectionBounds.isNull else { return }
+        let center = CGPoint(x: selectionBounds.midX, y: selectionBounds.midY)
+        transformSelected(CGAffineTransform(translationX: -center.x, y: -center.y).concatenating(CGAffineTransform(rotationAngle: angle)).concatenating(CGAffineTransform(translationX: center.x, y: center.y)))
     }
     func recolor(_ color: UIColor) {
         mutate { PKStroke(ink: PKInk($0.ink.inkType, color: color), path: $0.path, transform: $0.transform, mask: $0.mask) }

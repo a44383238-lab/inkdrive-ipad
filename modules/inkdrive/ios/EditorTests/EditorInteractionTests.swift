@@ -66,6 +66,15 @@ import PencilKit
         controller.loadViewIfNeeded()
         XCTAssertTrue(descendants(controller.view).compactMap { ($0 as? UILabel)?.text }.contains("3.0 px"))
     }
+    func testLegacyToolSettingsSurviveTextStyleExtension() throws {
+        let original = ToolSettings()
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+        json.removeValue(forKey: "textTraits")
+        var restored = try JSONDecoder().decode(ToolSettings.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(restored.color, original.color)
+        restored.textTraits = UIFontDescriptor.SymbolicTraits.traitBold.rawValue
+        XCTAssertTrue(restored.uiFont.fontDescriptor.symbolicTraits.contains(.traitBold))
+    }
     func testRecordButtonStartsWithoutSeparateLessonForm() async throws {
         let editor = try editor(); editor.canRecord = true
         let invoked = expectation(description: "one tap starts recording")

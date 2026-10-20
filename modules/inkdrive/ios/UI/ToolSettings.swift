@@ -34,13 +34,17 @@ struct ToolSettings: Codable {
     var fontSize: Double = 18
     var font = "system"
     var alignment = 0
+    var textTraits: UInt32?
     var uiColor: UIColor { UIColor(hex: color).withAlphaComponent(opacity) }
     var uiFont: UIFont {
+        let base: UIFont
         switch font {
-        case "serif": return UIFont(name: "Georgia", size: fontSize) ?? .systemFont(ofSize: fontSize)
-        case "mono": return .monospacedSystemFont(ofSize: fontSize, weight: .regular)
-        default: return .systemFont(ofSize: fontSize)
+        case "serif": base = UIFont(name: "Georgia", size: fontSize) ?? .systemFont(ofSize: fontSize)
+        case "mono": base = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        default: base = UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize)
         }
+        guard let descriptor = base.fontDescriptor.withSymbolicTraits(UIFontDescriptor.SymbolicTraits(rawValue: textTraits ?? 0)) else { return base }
+        return UIFont(descriptor: descriptor, size: fontSize)
     }
     func nativeTool(_ tool: EditorTool) -> PKTool {
         if tool == .eraser {
