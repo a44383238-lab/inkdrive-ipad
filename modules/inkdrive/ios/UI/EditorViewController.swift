@@ -318,8 +318,14 @@ import PencilKit
     private func editText(record: NotebookPage, point: CGPoint, existing: PDFAnnotation?) {
         if let existing, existing.type != PDFAnnotationSubtype.freeText.rawValue { return }
         let alert = UIAlertController(title: "텍스트 상자", message: "Pencil로 드래그하면 위치를 옮길 수 있어요.", preferredStyle: .alert)
-        for (placeholder, value) in [("내용", existing?.contents ?? ""), ("글자 크기", String(existing?.font?.pointSize ?? settings.fontSize)),
-                                      ("상자 너비", String(existing?.bounds.width ?? 240)), ("상자 높이", String(existing?.bounds.height ?? 100))] {
+        let pointSize: CGFloat = existing?.font?.pointSize ?? CGFloat(settings.fontSize)
+        let boxWidth: CGFloat = existing?.bounds.width ?? 240
+        let boxHeight: CGFloat = existing?.bounds.height ?? 100
+        let textFields: [(String, String)] = [
+            ("내용", existing?.contents ?? ""), ("글자 크기", String(Double(pointSize))),
+            ("상자 너비", String(Double(boxWidth))), ("상자 높이", String(Double(boxHeight)))
+        ]
+        for (placeholder, value) in textFields {
             alert.addTextField { $0.placeholder = placeholder; $0.text = value }
         }
         alert.addAction(UIAlertAction(title: "취소", style: .cancel))
