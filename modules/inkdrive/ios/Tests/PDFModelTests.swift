@@ -66,4 +66,13 @@ final class PDFModelTests: XCTestCase {
     func testInvalidOrLockedPDFDoesNotBecomeAnEmptyNote() {
         XCTAssertThrowsError(try PDFModel(data: Data("not pdf".utf8)))
     }
+    func testPageIdentitySurvivesSaveReopenAndReordering() throws {
+        let model = try PDFModel(data: XCTUnwrap(fixture().dataRepresentation()))
+        let first = model.pages[0].id
+        let second = try model.insertBlank(at: 1, template: .plain).id
+        try model.movePage(from: 0, to: 1)
+        let reopened = try PDFModel(data: model.snapshot())
+        XCTAssertEqual(reopened.pages.map(\.id), [second, first])
+        XCTAssertTrue(reopened.pages.allSatisfy { $0.page.annotations.allSatisfy { $0.userName != "InkDrive.PageID.v1" } })
+    }
 }

@@ -30,16 +30,22 @@ final class PDFModel {
             guard owned.count <= 1 else { throw InkError.corruptInk }
             let drawing = try owned.first.map(InkAnnotation.decode) ?? PKDrawing()
             owned.forEach(page.removeAnnotation)
-            records.append(NotebookPage(page: page, drawing: drawing))
+            let identities = page.annotations.filter { $0.userName == "InkDrive.PageID.v1" }
+            let id = identities.first.flatMap { UUID(uuidString: $0.contents ?? "") } ?? UUID()
+            identities.forEach(page.removeAnnotation)
+            records.append(NotebookPage(page: page, drawing: drawing, id: id))
         }
         self.pdf = document; self.pages = records
     }
     func record(for page: PDFPage) -> NotebookPage? { pages.first { $0.page === page } }
     func snapshot() throws -> Data {
         guard let base = pdf.dataRepresentation(), let copy = PDFDocument(data: base) else { throw InkError.serialization }
-        for (index, record) in pages.enumerated() where !record.drawing.strokes.isEmpty {
+        for (index, record) in pages.enumerated() {
             guard let page = copy.page(at: index) else { throw InkError.serialization }
-            page.addAnnotation(InkAnnotation(drawing: record.drawing, crop: page.bounds(for: .cropBox)))
+            let identity = PDFAnnotation(bounds: .zero, forType: .text, withProperties: nil)
+            identity.userName = "InkDrive.PageID.v1"; identity.contents = record.id.uuidString
+            identity.shouldDisplay = false; identity.shouldPrint = false; page.addAnnotation(identity)
+            if !record.drawing.strokes.isEmpty { page.addAnnotation(InkAnnotation(drawing: record.drawing, crop: page.bounds(for: .cropBox))) }
         }
         guard let bytes = copy.dataRepresentation(), let check = PDFDocument(data: bytes), check.pageCount == pages.count else {
             throw InkError.serialization

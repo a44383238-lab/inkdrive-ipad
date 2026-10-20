@@ -54,15 +54,42 @@ public final class InkDriveModule: Module {
                     let presenter = try self.controller()
                     let session = try await self.library().open(path)
                     let editor = EditorViewController(session: session); self.editor = editor
+                    let rootScope = try self.library().access()
+                    let tabsKey = "inkdrive.document-tabs." + CoordinatedStore.digest(Data(rootScope.url.absoluteString.utf8))
+                    let previous = UserDefaults.standard.stringArray(forKey: tabsKey) ?? []
+                    editor.documentPath = path
+                    editor.documentPaths = Array(([path] + previous.filter { $0 != path }).prefix(8))
+                    UserDefaults.standard.set(editor.documentPaths, forKey: tabsKey)
+                    editor.documentsChanged = { UserDefaults.standard.set($0, forKey: tabsKey) }
+                    editor.listDocuments = { try self.library().pdfPaths() }
+                    editor.openDocument = { [weak editor] next in
+                        if let previous = editor?.documentPath { try self.library().refreshLessonSources(pdf: previous) }
+                        return try await self.library().open(next)
+                    }
                     editor.canRecord = true
-                    editor.recordingAction = { try await self.quickRecording(path) }
-                    editor.didClose = {
+                    editor.recordingAction = { [weak editor] in
+                        guard let editor else { throw InkError.unavailable }
+                        try await self.quickRecording(editor.documentPath)
+                    }
+                    editor.recordingsAction = { [weak editor] in
+                        guard let editor else { return }
+                        do { try self.presentRecordings(editor.documentPath, from: editor) } catch { editor.showError(error) }
+                    }
+                    editor.didClose = { [weak editor] in
                         self.editor = nil
-                        do { try self.library().refreshLessonSources(pdf: path); promise.resolve(nil) }
+                        do { try self.library().refreshLessonSources(pdf: editor?.documentPath ?? path); promise.resolve(nil) }
                         catch { promise.reject(error) }
                     }
                     presenter.present(editor, animated: true)
                 } catch { self.editor = nil; promise.reject(error) }
+            }
+        }.runOnQueue(.main)
+        AsyncFunction("openRecordings") { (path: String, promise: Promise) in
+            Task { @MainActor in
+                do {
+                    guard self.editor == nil, self.picker == nil else { throw InkError.busy }
+                    try self.presentRecordings(path, from: self.controller()); promise.resolve(nil)
+                } catch { promise.reject(error) }
             }
         }.runOnQueue(.main)
         AsyncFunction("pickPDF") { (promise: Promise) in
@@ -130,6 +157,16 @@ public final class InkDriveModule: Module {
                                  "error": service.lastError.map { $0 as Any } ?? NSNull()])
             }
         }.runOnQueue(.main)
+    }
+    @MainActor private func presentRecordings(_ path: String, from presenter: UIViewController) throws {
+        guard presenter.presentedViewController == nil else { throw InkError.busy }
+        let source = try library().recordings(for: path)
+        let browser = RecordingBrowserController(rows: source.rows, scope: source.scope)
+        let navigation = UINavigationController(rootViewController: browser)
+        navigation.modalPresentationStyle = .pageSheet
+        navigation.sheetPresentationController?.detents = [.medium(), .large()]
+        navigation.sheetPresentationController?.prefersGrabberVisible = true
+        presenter.present(navigation, animated: true)
     }
     private func json<T: Encodable>(_ value: T) throws -> Any {
         try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))

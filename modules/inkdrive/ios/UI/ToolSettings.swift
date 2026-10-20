@@ -1,7 +1,7 @@
 import UIKit
 import PencilKit
 
-enum EditorTool: String, CaseIterable {
+enum EditorTool: String, CaseIterable, Codable {
     case pen, pencil, marker, eraser, lasso, text
     var label: String { switch self {
     case .pen: return "펜"
@@ -20,6 +20,7 @@ enum EditorTool: String, CaseIterable {
     case .text: return "type"
     } }
 }
+struct ToolPreset: Codable { let tool: EditorTool; let settings: ToolSettings }
 struct ToolSettings: Codable {
     var color = "#2455D6"
     var width: Double = 3

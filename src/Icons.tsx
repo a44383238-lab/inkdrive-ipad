@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image } from 'react-native';
 const icons = {
+  'play': require('../assets/icons/play.png'),
   'arrow-left': require('../assets/icons/arrow-left.png'),
   'arrow-right': require('../assets/icons/arrow-right.png'),
   'chevron-right': require('../assets/icons/chevron-right.png'),

@@ -10,6 +10,6 @@ const bridge: Bridge = {
   async list(path) { return (folders[path] ?? []).map(name => ({ name, path: [path, name].filter(Boolean).join('/'), directory: true, bytes: 0, modified: 0 } as Entry)); },
   async lessons() { return []; }, async recordingStatus() { return { active: false, seconds: 0, pending: false, error: null }; },
   async readText() { return ''; }, async createFolder() {}, async createNote() { return ''; }, async openEditor() {}, async pickPDF() {},
-  async saveLesson() {}, async importRecording() {}, async startRecording() {}, async quickStartRecording() {}, async stopRecording() {}, async recoverRecording() {}, async archivePendingRecording() {},
+  async openRecordings() {}, async saveLesson() {}, async importRecording() {}, async startRecording() {}, async quickStartRecording() {}, async stopRecording() {}, async recoverRecording() {}, async archivePendingRecording() {},
 };
 export default function LibraryPreview() { return <SafeAreaProvider><LibraryApp bridge={bridge} /></SafeAreaProvider>; }

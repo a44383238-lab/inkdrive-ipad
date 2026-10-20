@@ -51,6 +51,19 @@ struct LessonRecord: Codable {
             }
         }
     }
+    func pdfPaths() throws -> [String] {
+        let scope = try access()
+        return try coordinated(scope.url, writing: false) { root in
+            guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isSymbolicLinkKey, .isDirectoryKey], options: [.skipsHiddenFiles]) else { return [] }
+            var result: [String] = [], visited = 0
+            while let item = walker.nextObject() as? URL {
+                visited += 1; if visited > 10000 { break }
+                if (try? item.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true { walker.skipDescendants(); continue }
+                if item.pathExtension.lowercased() == "pdf" { result.append(String(item.path.dropFirst(root.path.count + 1))) }
+            }
+            return result.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
+    }
     func createFolder(parent: String, name: String) throws {
         let scope = try access(), checked = try FileNames.checked(name)
         let directory = try FileNames.child(parent, in: scope.url)
@@ -85,6 +98,18 @@ struct LessonRecord: Codable {
                 try JSONDecoder().decode(LessonRecord.self, from: Data(contentsOf: $0))
             }.filter { $0.date == date }
         }
+    }
+    func recordings(for pdf: String) throws -> (rows: [RecordingRow], scope: SecurityScope) {
+        let scope = try access()
+        _ = try FileNames.child(pdf, in: scope.url)
+        let folder = scope.url.appendingPathComponent(".inkdrive/lessons", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return ([], scope) }
+        let lessons: [LessonRecord] = try coordinated(folder, writing: false) { directory in
+            try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "json" }
+                .map { try JSONDecoder().decode(LessonRecord.self, from: Data(contentsOf: $0)) }
+        }
+        return (RecordingCatalog.rows(for: pdf, lessons: lessons), scope)
     }
     func saveLesson(_ lesson: LessonRecord) throws {
         guard lesson.schemaVersion == 1, UUID(uuidString: lesson.id) != nil,

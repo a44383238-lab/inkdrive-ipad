@@ -1,13 +1,13 @@
 import type { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
-  name: 'InkDrive', slug: 'inkdrive', version: '0.2.0', scheme: 'inkdrive', icon: './assets/icon.png',
+  name: 'InkDrive', slug: 'inkdrive', version: '0.3.0', scheme: 'inkdrive', icon: './assets/icon.png',
   orientation: 'default', userInterfaceStyle: 'light',
   owner: 'son031027',
   extra: { eas: { projectId: 'a795f3f8-f4a3-4a16-bad2-4f6f0f39ba8e' } },
   ios: {
     bundleIdentifier: 'app.inkdrive.notes',
-    buildNumber: '2',
+    buildNumber: '3',
     supportsTablet: true,
     infoPlist: {
       LSSupportsOpeningDocumentsInPlace: true,

@@ -95,6 +95,7 @@ import PencilKit
             do { try await self.flush() } catch { self.statusChanged?(error.localizedDescription) }
         }
     }
+    func preservePageIdentities() { changed() }
     /// Waiters share the entire save loop, so close never races a prior write.
     func flush() async throws {
         if let saving { return try await saving.value }

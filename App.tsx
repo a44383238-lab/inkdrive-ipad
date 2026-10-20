@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Native, type Entry, type Lesson } from './modules/inkdrive';
@@ -8,10 +8,8 @@ import { cleanName, orderedEntries, SingleFlight, LatestRequest, parentFolder, f
 import { Icon, FolderArt, type IconName } from './src/Icons';
 
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(new Date());
-const uid = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-  const r = Math.floor(Math.random() * 16); return (c === 'x' ? r : (r & 3) | 8).toString(16);
-});
-type Form = { type: 'folder' | 'note' | 'lesson'; name: string; subject: string; pdf: string; template: string };
+type Form = { type: 'folder' | 'note'; name: string; template: string };
+
 type Screen = 'library' | 'today' | 'settings';
 
 export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
@@ -61,8 +59,8 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
     poll(); const timer = setInterval(poll, 2000);
     return () => { mounted = false; clearInterval(timer); };
   }, []);
-  function openForm(type: Form['type'], pdf = '') {
-    setForm({ type, name: '', subject: path.split('/').at(-1) ?? '', pdf, template: 'ruled' });
+  function openForm(type: Form['type']) {
+    setForm({ type, name: '', template: 'ruled' });
   }
   async function submit() {
     if (!form || !Native) return;
@@ -70,15 +68,8 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
     await run(async () => {
       const name = cleanName(value.name);
       if (value.type === 'folder') await Native!.createFolder(path, name);
-      else if (value.type === 'note') await Native!.createNote(path, name, value.template);
-      else {
-        if (!value.subject.trim()) throw new Error('과목명을 입력해 주세요.');
-        const lesson: Lesson = { schemaVersion: 1, id: uid(), date: today(), subject: value.subject.trim(), title: name,
-          pdf: value.pdf, recordings: [], materials: [], endedAt: null, requestedOutputs: ['transcript', 'lecture-notes', 'review-questions'] };
-        await Native!.saveLesson(JSON.stringify(lesson));
-      }
+      else await Native!.createNote(path, name, value.template);
       setForm(null); await refresh();
-      if (value.type === 'lesson') setScreen('today');
     });
   }
   const changeFolder = (next: string) => {
@@ -86,19 +77,11 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
     if (!destination.changed) { void run(() => refresh(next)); return; }
     setPath(destination.path); setQuery('');
   };
-  async function quickRecord(pdf?: string) {
-    if (!Native || !root) return;
+  async function openRecordings(pdf: string) {
+    if (!Native) return;
     await run(async () => {
-      if (recording.active) { await Native!.stopRecording(); await refresh(); return; }
-      if (typeof Native!.quickStartRecording !== 'function') throw new Error('새 개발용 IPA를 설치해 주세요.');
-      let target = pdf;
-      if (!target) {
-        const stamp = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', dateStyle: 'short', timeStyle: 'medium' }).format(new Date()).replace(/[: ]/g, '-');
-        target = await Native!.createNote(path, '수업 ' + stamp, 'ruled');
-      }
-      await Native!.quickStartRecording(target);
-      setRecording(await Native!.recordingStatus());
-      await Native!.openEditor(target); await refresh();
+      if (typeof Native!.openRecordings !== 'function') throw new Error('녹음 재생은 새 개발용 IPA 설치 후 사용할 수 있어요.');
+      await Native!.openRecordings(pdf);
     });
   }
   const iconButton = (icon: IconName, label: string, action: () => void, disabled = false, accent = false) => (
@@ -141,11 +124,7 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
               {iconButton('file-text', '외부 PDF 열기', () => void run(async () => { await Native?.pickPDF(); await refresh(); }), !Native)}
               {iconButton('plus', '새 노트', () => openForm('note'), !root, true)}
             </>}
-            {screen !== 'settings' && <Pressable accessibilityRole="button" accessibilityLabel={recording.active ? '녹음 종료' : '새 수업 녹음'}
-              disabled={!root || busy} onPress={() => void quickRecord()} style={[styles.recordButton, (!root || busy) && styles.disabled]}>
-              <Icon name={recording.active ? 'square' : 'mic'} color="#C64F60" />
-              {recording.active && <Text style={styles.recordTime}>{Math.floor(recording.seconds / 60)}:{String(Math.floor(recording.seconds % 60)).padStart(2, '0')}</Text>}
-            </Pressable>}
+
           </View>
         </View>
         {screen === 'library' && <>
@@ -175,10 +154,7 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
                   {row.directory ? <FolderArt /> : <View style={styles.paper}><Icon name="file-text" size={40} color="#7D91AD" /><View style={styles.paperLine} /><View style={[styles.paperLine, { width: 34 }]} /></View>}
                   <Text numberOfLines={2} style={styles.fileTitle}>{row.name.replace(/\.pdf$/i, '')}</Text>
                 </Pressable>
-                {!row.directory && row.path.toLowerCase().endsWith('.pdf') && <View style={styles.cardActions}>
-                  {iconButton('mic', row.name + ' 녹음', () => void quickRecord(row.path))}
-                  {iconButton('calendar-days', '수업 연결', () => openForm('lesson', row.path))}
-                </View>}
+
               </View>)}
             </View>
             {!rows.length && <View style={styles.empty}><FolderArt size={92} /><Text style={styles.small}>비어 있어요</Text>{iconButton('plus', '새 노트', () => openForm('note'), false, true)}</View>}
@@ -191,7 +167,7 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
             <View style={styles.lessonHeading}><View style={styles.flex}><Text style={styles.small}>{lesson.subject}</Text><Text style={styles.sectionTitle}>{lesson.title}</Text></View><Text style={styles.chip}>{lesson.endedAt ? '종료' : '진행 중'}</Text></View>
             <View style={styles.actions}>
               {iconButton('pen-tool', '필기 열기', () => void run(async () => { await Native!.openEditor(lesson.pdf); await refresh(); }))}
-              {iconButton('mic', '녹음', () => void quickRecord(lesson.pdf), recording.active)}
+              {iconButton('play', '녹음본 듣기', () => void openRecordings(lesson.pdf), recording.active || !lesson.recordings.length)}
               {iconButton('plus', '녹음 가져오기', () => void run(async () => { await Native!.importRecording(JSON.stringify(lesson)); await refresh(); }), recording.active)}
               {button(lesson.endedAt ? '다시 열기' : '수업 종료', () => void run(async () => {
                 if (recording.active) await Native!.stopRecording();
@@ -199,7 +175,6 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
                 const current = latestLessons.find(value => value.id === lesson.id) ?? lesson;
                 await Native!.saveLesson(JSON.stringify({ ...current, endedAt: current.endedAt ? null : new Date().toISOString() })); await refresh();
               }), true)}
-              <Text style={styles.small}>녹음 {lesson.recordings.length}</Text>
             </View>
           </View>)}
         </>}
@@ -213,9 +188,8 @@ export function LibraryApp({ bridge = Native }: { bridge?: typeof Native }) {
     </View>
     <Modal visible={form !== null} transparent animationType="fade" onRequestClose={() => { if (!busy) setForm(null); }}>
       <View style={styles.modalBackdrop}><View style={styles.modal}>
-        <Text style={styles.sectionTitle}>{form?.type === 'folder' ? '새 폴더' : form?.type === 'note' ? '새 노트' : '오늘 수업 연결'}</Text>
-        <TextInput autoFocus style={styles.input} placeholder={form?.type === 'lesson' ? '수업 제목' : '이름'} value={form?.name} onChangeText={name => setForm(value => value && ({ ...value, name }))} />
-        {form?.type === 'lesson' && <><TextInput style={styles.input} placeholder="과목명" value={form.subject} onChangeText={subject => setForm(value => value && ({ ...value, subject }))} /><Text style={styles.small}>{form.pdf}</Text></>}
+        <Text style={styles.sectionTitle}>{form?.type === 'folder' ? '새 폴더' : '새 노트'}</Text>
+        <TextInput autoFocus style={styles.input} placeholder="이름" value={form?.name} onChangeText={name => setForm(value => value && ({ ...value, name }))} />
         {form?.type === 'note' && <View style={styles.actions}>{['plain', 'ruled', 'grid'].map((template, i) => <Pressable key={template} onPress={() => setForm(value => value && ({ ...value, template }))} style={[styles.chip, form.template === template && styles.navSelected]}><Text>{['무지', '줄노트', '모눈'][i]}</Text></Pressable>)}</View>}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <View style={styles.actions}>{button('취소', () => setForm(null), true)}{button('만들기', () => void submit())}</View>
@@ -247,7 +221,6 @@ const styles = StyleSheet.create({
   secondary: { backgroundColor: '#EDF1F7' }, buttonText: { fontSize: 13, fontWeight: '600', color: 'white' }, secondaryText: { color: '#4C617E' },
   disabled: { opacity: 0.35 }, pressed: { opacity: 0.65 }, actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   iconButton: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EDF1F6' }, accentButton: { backgroundColor: '#3665BF' },
-  recordButton: { minWidth: 48, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', paddingHorizontal: 13, backgroundColor: '#FBECEE', gap: 8 }, recordTime: { color: '#C64F60', fontVariant: ['tabular-nums'], fontSize: 13 },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 26, flexWrap: 'wrap' },
   breadcrumb: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', minWidth: 120 }, crumbPart: { flexDirection: 'row', alignItems: 'center' },
   crumb: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 5 }, rootCrumb: { fontWeight: '600', color: '#435D80', fontSize: 14 }, crumbText: { color: '#66798F', fontSize: 13 },
@@ -257,7 +230,6 @@ const styles = StyleSheet.create({
   fileOpen: { alignItems: 'center', justifyContent: 'center', paddingTop: 5, gap: 12, minHeight: 136 },
   fileTitle: { color: '#344A65', fontWeight: '500', fontSize: 13, textAlign: 'center', lineHeight: 19, minHeight: 23, paddingHorizontal: 3 },
   paper: { width: 68, height: 85, borderRadius: 7, borderWidth: 1, borderColor: '#DCE4EF', backgroundColor: '#F9FBFE', alignItems: 'center', justifyContent: 'center', gap: 7 }, paperLine: { width: 42, height: 2, backgroundColor: '#DEE6F2', borderRadius: 2 },
-  cardActions: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 5 },
   empty: { marginVertical: 35, alignItems: 'center', padding: 36, gap: 20, minHeight: 260, justifyContent: 'center' },
   lesson: { backgroundColor: 'white', padding: 22, borderRadius: 18, borderWidth: 1, borderColor: '#E4E9F2', marginBottom: 16 }, flex: { flex: 1 }, lessonHeading: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   chip: { backgroundColor: '#EEF3FA', color: '#617694', padding: 8, borderRadius: 8, fontSize: 11 }, dayRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },

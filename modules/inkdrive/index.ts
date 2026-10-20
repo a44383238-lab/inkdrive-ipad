@@ -13,6 +13,7 @@ export type Bridge = {
   createFolder(parent: string, name: string): Promise<void>;
   createNote(parent: string, name: string, template: string): Promise<string>;
   openEditor(path: string): Promise<void>;
+  openRecordings(path: string): Promise<void>;
   pickPDF(): Promise<void>;
   lessons(date: string): Promise<Lesson[]>;
   saveLesson(json: string): Promise<void>;

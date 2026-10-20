@@ -4,7 +4,15 @@ import PencilKit
 import AVFoundation
 
 @MainActor final class EditorViewController: UIViewController, UIPencilInteractionDelegate, UIGestureRecognizerDelegate, UIPopoverPresentationControllerDelegate {
-    let session: EditorSession
+    private(set) var session: EditorSession
+    var documentPath = ""
+    var documentPaths: [String] = []
+    var openDocument: ((String) async throws -> EditorSession)?
+    var documentsChanged: (([String]) -> Void)?
+    var listDocuments: (() throws -> [String])?
+    private let tabs = UIStackView()
+    private var switchingDocument = false
+    private var savedPages: [String: Int] = [:]
     let pdfView = PDFView()
     let provider = OverlayProvider()
     private(set) var tool: EditorTool = .pen
@@ -16,6 +24,7 @@ import AVFoundation
     private var visibleTools: [EditorTool] = EditorTool.allCases
     private let recordButton = UIButton(type: .system)
     var recordingAction: (() async throws -> Void)?
+    var recordingsAction: (() -> Void)?
     var canRecord = false
     private var startingRecording = false
     private let tools = UIStackView()
@@ -65,6 +74,7 @@ import AVFoundation
         recordButton.widthAnchor.constraint(equalToConstant: 104).isActive = true
         recordButton.addTarget(self, action: #selector(toggleRecording), for: .touchUpInside)
         header.addArrangedSubview(recordButton)
+        if recordingsAction != nil { header.addArrangedSubview(iconButton("list-music", label: "녹음 목록", action: #selector(showRecordings))) }
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshRecordingButton() }
         }
@@ -73,20 +83,24 @@ import AVFoundation
         header.addArrangedSubview(iconButton("save", label: "저장", action: #selector(saveNow)))
         header.addArrangedSubview(iconButton("ellipsis", label: "문서 메뉴", action: #selector(more)))
         header.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(header)
+        let tabScroll = UIScrollView(); tabScroll.showsHorizontalScrollIndicator = false; tabScroll.translatesAutoresizingMaskIntoConstraints = false
+        tabs.axis = .horizontal; tabs.spacing = 6; tabs.translatesAutoresizingMaskIntoConstraints = false; tabScroll.addSubview(tabs); view.addSubview(tabScroll)
+        let hasTabs = openDocument != nil
         NSLayoutConstraint.activate([
+            tabScroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 2), tabScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16), tabScroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16), tabScroll.heightAnchor.constraint(equalToConstant: hasTabs ? 44 : 0),
+            tabs.leadingAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.leadingAnchor), tabs.trailingAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.trailingAnchor), tabs.topAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.topAnchor), tabs.bottomAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.bottomAnchor), tabs.heightAnchor.constraint(equalTo: tabScroll.frameLayoutGuide.heightAnchor),
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16), header.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
-            pdfView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 6), pdfView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            pdfView.topAnchor.constraint(equalTo: tabScroll.bottomAnchor, constant: 4), pdfView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             pdfView.leadingAnchor.constraint(equalTo: view.leadingAnchor), pdfView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
-        buildToolbar()
+        rebuildTabs(); buildToolbar()
         let pencil = UIPencilInteraction(); pencil.delegate = self; view.addInteraction(pencil)
         let undo = UITapGestureRecognizer(target: self, action: #selector(undoAction))
         undo.numberOfTouchesRequired = 2; undo.numberOfTapsRequired = 2; undo.delegate = self
         undo.cancelsTouchesInView = false; pdfView.addGestureRecognizer(undo)
-        session.didChange = { [weak self] in self?.refresh() }
-        session.statusChanged = { [weak self] value in self?.status.accessibilityValue = value }
+        bindSession()
         observerTokens.append(NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.backgroundSave() }
         })
@@ -98,6 +112,56 @@ import AVFoundation
         })
     }
     deinit { observerTokens.forEach(NotificationCenter.default.removeObserver); recordingTimer?.invalidate() }
+    private func bindSession() {
+        session.didChange = { [weak self] in self?.refresh() }
+        session.statusChanged = { [weak self] value in self?.status.accessibilityValue = value }
+    }
+    private func rebuildTabs() {
+        tabs.arrangedSubviews.forEach { tabs.removeArrangedSubview($0); $0.removeFromSuperview() }
+        guard openDocument != nil else { return }
+        for path in documentPaths {
+            let tab = UIButton(type: .system)
+            tab.setTitle(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent, for: .normal)
+            tab.titleLabel?.font = .systemFont(ofSize: 12, weight: path == documentPath ? .semibold : .regular)
+            tab.contentEdgeInsets = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+            tab.backgroundColor = path == documentPath ? UIColor(hex: "#DCE6F8") : UIColor(hex: "#EDF1F6"); tab.layer.cornerRadius = 10
+            tab.accessibilityLabel = "문서 탭 " + path; tab.accessibilityValue = path == documentPath ? "선택됨" : nil
+            tab.addAction(UIAction { [weak self] _ in Task { @MainActor in await self?.switchToDocument(path) } }, for: .touchUpInside)
+            if path != documentPath { tab.menu = UIMenu(children: [UIAction(title: "탭 닫기", attributes: .destructive) { [weak self] _ in
+                guard let self else { return }; self.documentPaths.removeAll { $0 == path }; self.rebuildTabs(); self.documentsChanged?(self.documentPaths)
+            }]) }
+            tabs.addArrangedSubview(tab)
+        }
+        if listDocuments != nil { tabs.addArrangedSubview(iconButton("plus", label: "다른 문서 열기", action: #selector(browseDocuments))) }
+    }
+    @objc private func browseDocuments() {
+        do {
+            let controller = DocumentTabsController(paths: try listDocuments?() ?? []) { [weak self] path in
+                guard let self else { return }
+                if !self.documentPaths.contains(path) { self.documentPaths.append(path) }
+                Task { @MainActor in await self.switchToDocument(path) }
+            }
+            let navigation = UINavigationController(rootViewController: controller); navigation.modalPresentationStyle = .pageSheet
+            present(navigation, animated: true)
+        } catch { showError(error) }
+    }
+    func switchToDocument(_ path: String) async {
+        guard path != documentPath, !switchingDocument, !startingRecording, !closing, let openDocument else { return }
+        switchingDocument = true; view.isUserInteractionEnabled = false
+        defer { switchingDocument = false; view.isUserInteractionEnabled = true }
+        do {
+            provider.commitAll(); try await session.flush()
+            if let page = pdfView.currentPage { savedPages[documentPath] = session.model.pdf.index(for: page) }
+            let next = try await openDocument(path)
+            // Drain outgoing overlays while they still refer to their original session.
+            pdfView.document = nil; provider.overlays.removeAll()
+            session.didChange = nil; session.statusChanged = nil; session = next; documentPath = path; bindSession()
+            pdfView.document = next.model.pdf; pdfView.autoScales = true
+            if let page = next.model.pdf.page(at: min(savedPages[path] ?? 0, next.model.pages.count - 1)) { pdfView.go(to: page) }
+            status.text = next.store.url.deletingPathExtension().lastPathComponent
+            rebuildTabs(); documentsChanged?(documentPaths); provider.applyTool()
+        } catch { showError(error) }
+    }
     private func refreshRecordingButton() {
         let service = RecordingService.shared
         recordButton.isEnabled = !startingRecording
@@ -108,8 +172,9 @@ import AVFoundation
         recordButton.accessibilityLabel = service.active ? "녹음 종료" : "녹음 시작"
         recordButton.accessibilityValue = service.active ? "녹음 중" : nil
     }
+    @objc private func showRecordings() { recordingsAction?() }
     @objc func toggleRecording() {
-        guard !startingRecording else { return }
+        guard !startingRecording, !switchingDocument, !closing else { return }
         startingRecording = true; refreshRecordingButton()
         Task {
             defer { startingRecording = false; refreshRecordingButton() }
@@ -139,6 +204,7 @@ import AVFoundation
         floating.layer.shadowColor = UIColor(hex: "#203653").cgColor; floating.layer.shadowOpacity = 0.08
         floating.layer.shadowRadius = 16; floating.layer.shadowOffset = CGSize(width: 0, height: 5)
         floating.frame = CGRect(x: 20, y: 110, width: 520, height: 56)
+        if let position = UserDefaults.standard.array(forKey: "inkdrive.toolbar-position") as? [Double], position.count == 2 { floating.frame.origin = CGPoint(x: position[0], y: position[1]) }
         floating.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]; view.addSubview(floating)
         let stack = UIStackView(); stack.axis = .horizontal; stack.spacing = 4; stack.alignment = .center
         stack.translatesAutoresizingMaskIntoConstraints = false; floating.addSubview(stack)
@@ -167,6 +233,20 @@ import AVFoundation
     private func rebuildTools() {
         tools.arrangedSubviews.forEach { tools.removeArrangedSubview($0); $0.removeFromSuperview() }
         toolButtons.removeAll()
+        let presets = (UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []).compactMap { try? JSONDecoder().decode(ToolPreset.self, from: $0) }
+        for (index, preset) in presets.enumerated() {
+            let item = InkIcons.button(preset.tool.icon, label: "즐겨찾기 \(index + 1), \(preset.settings.width) px")
+            item.tintColor = preset.settings.uiColor.withAlphaComponent(1)
+            item.backgroundColor = preset.settings.uiColor.withAlphaComponent(0.08)
+            item.addAction(UIAction { [weak self] _ in
+                guard let self else { return }; self.configurations[preset.tool.rawValue] = preset.settings
+                UserDefaults.standard.set(try? JSONEncoder().encode(self.configurations), forKey: "inkdrive.tools.v1"); self.setTool(preset.tool)
+            }, for: .touchUpInside)
+            item.menu = UIMenu(children: [UIAction(title: "즐겨찾기 삭제", attributes: .destructive) { [weak self] _ in
+                var saved = UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []
+                guard saved.indices.contains(index) else { return }; saved.remove(at: index); UserDefaults.standard.set(saved, forKey: "inkdrive.tool-presets.v2"); self?.rebuildTools()
+            }]); tools.addArrangedSubview(item)
+        }
         for choice in visibleTools {
             let item = InkIcons.button(choice.icon, label: choice.label)
             item.addAction(UIAction { [weak self, weak item] _ in
@@ -189,7 +269,7 @@ import AVFoundation
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        floating.frame.size.width = min(CGFloat(visibleTools.count * 48 + 212), view.bounds.width - 24)
+        floating.frame.size.width = min(CGFloat(tools.arrangedSubviews.count * 48 + 212), view.bounds.width - 24)
         floating.frame.origin.x = min(max(12, floating.frame.origin.x), max(12, view.bounds.width - floating.frame.width - 12))
         floating.frame.origin.y = min(max(view.safeAreaInsets.top + 56, floating.frame.origin.y), max(view.safeAreaInsets.top + 56, view.bounds.height - floating.frame.height - view.safeAreaInsets.bottom))
         viewport.configure(pdfView)
@@ -261,6 +341,7 @@ import AVFoundation
     @objc private func dragToolbar(_ gesture: UIPanGestureRecognizer) {
         let delta = gesture.translation(in: view); floating.center.x += delta.x; floating.center.y += delta.y
         gesture.setTranslation(.zero, in: view); viewDidLayoutSubviews()
+        if gesture.state == .ended { UserDefaults.standard.set([Double(floating.frame.origin.x), Double(floating.frame.origin.y)], forKey: "inkdrive.toolbar-position") }
     }
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         switch UIPencilInteraction.preferredTapAction {
@@ -283,7 +364,7 @@ import AVFoundation
         provider.commitAll(); Task { do { try await session.flush() } catch { showError(error) } }
     }
     @objc private func closeEditor() {
-        guard !closing else { return }
+        guard !closing, !switchingDocument, !startingRecording else { return }
         closing = true; view.isUserInteractionEnabled = false
         Task {
             do {
@@ -357,6 +438,9 @@ import AVFoundation
         var presets = UserDefaults.standard.array(forKey: "inkdrive.presets") as? [Data] ?? []
         if let bytes = try? JSONEncoder().encode(settings) { presets.append(bytes) }
         UserDefaults.standard.set(Array(presets.suffix(12)), forKey: "inkdrive.presets")
+        var typed = UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []
+        if let bytes = try? JSONEncoder().encode(ToolPreset(tool: tool, settings: settings)) { typed.append(bytes) }
+        UserDefaults.standard.set(Array(typed.suffix(8)), forKey: "inkdrive.tool-presets.v2"); rebuildTools()
     }
     private func loadPreset() {
         let presets = (UserDefaults.standard.array(forKey: "inkdrive.presets") as? [Data] ?? []).compactMap { try? JSONDecoder().decode(ToolSettings.self, from: $0) }
