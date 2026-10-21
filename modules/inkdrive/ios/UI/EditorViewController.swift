@@ -438,6 +438,10 @@ import AVFoundation
             UserDefaults.standard.set(try? JSONEncoder().encode(self.configurations), forKey: "inkdrive.tools.v1")
             self.updateToolAppearance(); self.provider.applyTool()
         }
+        popover.toolSelected = { [weak self] next in
+            guard let self else { return }; self.setTool(next)
+            if let button = self.toolButtons[next] { self.showToolPopover(from: button) }
+        }
         popover.removeTool = { [weak self] in self?.hideTool(choice) }
         popover.advanced = { [weak self] in self?.toolOptions() }
         popover.popoverPresentationController?.sourceView = anchor

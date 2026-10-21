@@ -6,6 +6,7 @@ import UIKit
     private let changed: (ToolSettings) -> Void
     var removeTool: (() -> Void)?
     var advanced: (() -> Void)?
+    var toolSelected: ((EditorTool) -> Void)?
     init(tool: EditorTool, settings: ToolSettings, changed: @escaping (ToolSettings) -> Void) {
         self.tool = tool; self.settings = settings; self.changed = changed
         super.init(nibName: nil, bundle: nil)
@@ -25,7 +26,14 @@ import UIKit
         hide.addAction(UIAction { [weak self] _ in guard let self else { return }; let action = self.removeTool; self.dismiss(animated: true, completion: action) }, for: .touchUpInside)
         header.addArrangedSubview(hide); stack.addArrangedSubview(header)
         if tool != .eraser && tool != .lasso {
-            let nib = UIImageView(image: PenNibArtwork.image(tool: tool, color: settings.uiColor.withAlphaComponent(1), width: settings.width)); nib.contentMode = .scaleAspectFit; nib.heightAnchor.constraint(equalToConstant: 48).isActive = true; stack.addArrangedSubview(nib)
+            let nibs = UIStackView(); nibs.distribution = .fillEqually
+            for choice in [EditorTool.pen, .pencil, .marker] {
+                let nib = UIButton(type: .system); nib.setImage(PenNibArtwork.image(tool: choice, color: choice == tool ? settings.uiColor.withAlphaComponent(1) : UIColor(white: 0.35, alpha: 1), width: settings.width), for: .normal)
+                nib.heightAnchor.constraint(equalToConstant: 48).isActive = true; nib.accessibilityLabel = choice.label + " 종류 선택"
+                nib.addAction(UIAction { [weak self] _ in guard let self, choice != self.tool else { return }; self.dismiss(animated: false) { self.toolSelected?(choice) } }, for: .touchUpInside)
+                nibs.addArrangedSubview(nib)
+            }
+            stack.addArrangedSubview(nibs)
             let paletteTitle = UILabel(); paletteTitle.text = "기본 색상"; paletteTitle.font = .systemFont(ofSize: 11); paletteTitle.textColor = .secondaryLabel; stack.addArrangedSubview(paletteTitle)
             let swatches = UIStackView(); swatches.distribution = .fillEqually; swatches.spacing = 0
             for hex in ["#E60012", "#F17B00", "#F3C800", "#63D538", "#33CBAA", "#22BDED", "#2455D6", "#6229D5", "#B308E0", "#747474", "#FFFFFF", "#111111"] {
@@ -45,6 +53,13 @@ import UIKit
             row.addArrangedSubview(well); row.addArrangedSubview(slider(value: settings.width, min: 0.5, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
             stack.addArrangedSubview(row)
             stack.addArrangedSubview(slider(value: settings.opacity * 100, min: 5, max: 100, unit: "%") { [weak self] in self?.settings.opacity = $0 / 100; self?.publish() })
+            let recentTitle = UILabel(); recentTitle.text = "최근 색상"; recentTitle.font = .systemFont(ofSize: 11); recentTitle.textColor = .secondaryLabel; stack.addArrangedSubview(recentTitle)
+            let recent = UIStackView(); recent.spacing = 0; recent.distribution = .fillEqually
+            for hex in UserDefaults.standard.stringArray(forKey: "inkdrive.recent-colors") ?? ["#202020", "#2455D6", "#DB3249", "#FFFFFF"] {
+                let dot = InkColorButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.heightAnchor.constraint(equalToConstant: 18).isActive = true; dot.accessibilityLabel = "최근 색상 " + hex
+                dot.addAction(UIAction { [weak self] _ in self?.settings.color = hex; self?.publish() }, for: .touchUpInside); recent.addArrangedSubview(dot)
+            }
+            stack.addArrangedSubview(recent)
         } else if tool == .eraser {
             stack.addArrangedSubview(slider(value: settings.eraserWidth, min: 4, max: 80, unit: "px") { [weak self] in self?.settings.eraserWidth = $0; self?.publish() })
             stack.addArrangedSubview(toggle("부분 지우기", settings.partialEraser) { [weak self] in self?.settings.partialEraser = $0; self?.publish() })
@@ -62,7 +77,12 @@ import UIKit
         more.addAction(UIAction { [weak self] _ in guard let self else { return }; let action = self.advanced; self.dismiss(animated: true, completion: action) }, for: .touchUpInside)
         stack.addArrangedSubview(more)
     }
-    private func publish() { changed(settings) }
+    private func publish() {
+        var colors = UserDefaults.standard.stringArray(forKey: "inkdrive.recent-colors") ?? []
+        colors.removeAll { $0 == settings.color }; colors.insert(settings.color, at: 0)
+        UserDefaults.standard.set(Array(colors.prefix(12)), forKey: "inkdrive.recent-colors")
+        changed(settings)
+    }
     private func slider(value: Double, min: Float, max: Float, unit: String, update: @escaping (Double) -> Void) -> UIView {
         let stack = UIStackView(); stack.spacing = 10; stack.alignment = .center
         let slider = UISlider(); slider.minimumValue = min; slider.maximumValue = max; slider.value = Float(value); slider.tintColor = UIColor(hex: "#E8C65A")

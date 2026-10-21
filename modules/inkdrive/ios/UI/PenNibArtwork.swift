@@ -6,14 +6,18 @@ import UIKit
         guard [.pen, .pencil, .marker].contains(tool) else { return InkIcons.image(tool.icon) }
         return UIGraphicsImageRenderer(size: CGSize(width: 32, height: 34)).image { context in
             let c = context.cgContext
-            c.setFillColor(color.cgColor)
+            c.setFillColor((tool == .marker ? color : UIColor(white: 0.93, alpha: 1)).cgColor)
             let body = UIBezierPath()
             if tool == .marker {
                 body.move(to: CGPoint(x: 9, y: 2)); body.addLine(to: CGPoint(x: 23, y: 2)); body.addLine(to: CGPoint(x: 21, y: 17)); body.addLine(to: CGPoint(x: 11, y: 20))
+            } else if tool == .pencil {
+                body.move(to: CGPoint(x: 12, y: 1)); body.addLine(to: CGPoint(x: 20, y: 1)); body.addLine(to: CGPoint(x: 20, y: 14)); body.addLine(to: CGPoint(x: 16, y: 23)); body.addLine(to: CGPoint(x: 12, y: 14))
             } else {
                 body.move(to: CGPoint(x: 9, y: 1)); body.addLine(to: CGPoint(x: 23, y: 1)); body.addLine(to: CGPoint(x: 21, y: 10)); body.addLine(to: CGPoint(x: 16, y: 23)); body.addLine(to: CGPoint(x: 11, y: 10))
             }
             body.close(); body.fill()
+            c.saveGState(); body.addClip(); c.setFillColor(color.cgColor)
+            c.fill(CGRect(x: 8, y: 0, width: 16, height: 6)); c.fill(CGRect(x: 13, y: 18, width: 6, height: 6)); c.restoreGState()
             c.setStrokeColor(UIColor.white.withAlphaComponent(0.85).cgColor); c.setLineWidth(0.7); body.stroke()
             c.setStrokeColor(UIColor.black.withAlphaComponent(0.6).cgColor)
             c.move(to: CGPoint(x: 16, y: 10)); c.addLine(to: CGPoint(x: 16, y: 22)); c.strokePath()
