@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile,readdir,realpath,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {SchoolHTTP,syncCampus,resources,pluginFiles,courseIdentity,safeName,text} from '../shared/campus.mjs';
+import {SchoolHTTP,syncCampus,resources,pluginFiles,courseIdentity,safeName,text,attachmentName} from '../shared/campus.mjs';
 
 test('school metadata retains term and section; external links and traversal names are excluded',()=>{
   assert.deepEqual(courseIdentity({shortname:'통계 (2026-0020, IE2400211_066)'}),{term:'2026-0020',code:'IE2400211_066'});
@@ -11,6 +11,13 @@ test('school metadata retains term and section; external links and traversal nam
   assert.deepEqual(resources(html).map(x=>x.id),['3','7']);assert.equal(resources(html)[0].title,'자료');
   assert.deepEqual(pluginFiles(`<a href="https://evil.test/pluginfile.php/a.pdf">bad</a>`),[]);
   assert.doesNotMatch(safeName('../../CON.pdf'),/[\\/]/);assert.notEqual(safeName('CON.pdf'),'CON.pdf');
+});
+test('school filenames decode UTF-8 headers and keep the extension of long Korean names; decorative icons are excluded',()=>{
+  const name='공학작문및발표_조사보고서.pdf';
+  assert.equal(attachmentName(`attachment; filename="${Buffer.from(name).toString('latin1')}"`,'x'),name);
+  assert.equal(attachmentName(`attachment; filename*=UTF-8''${encodeURIComponent(name)}`,'x'),name);
+  assert.match(attachmentName(`attachment; filename="${'과제'.repeat(80)}.pdf"`,'x'),/\.pdf$/);
+  assert.deepEqual(pluginFiles(`<img src='/pluginfile.php/1/user/icon/f1.jpg'><a href='/pluginfile.php/2/theme_coursemos/favicon/1/favicon.ico'>icon</a><a href='/pluginfile.php/3/mod_assign/introattachment/0/과제.pdf'>자료</a>`),['https://plato.pusan.ac.kr/pluginfile.php/3/mod_assign/introattachment/0/%EA%B3%BC%EC%A0%9C.pdf']);
 });
 test('HTTP session restricts cookie domains and refuses external redirects',async()=>{
   let sent;const client=new SchoolHTTP([{name:'secret',value:'private',domain:'plato.pusan.ac.kr',path:'/'},{name:'portal',value:'other',domain:'onestop.pusan.ac.kr',path:'/'}],async(url,options)=>{sent=options.headers.Cookie;return new Response(null,{status:302,headers:{location:'https://evil.test/steal'}});});
@@ -40,7 +47,8 @@ test('assignment and notice attachments are collected while scripts and session 
   const root=await mkdtemp(join(tmpdir(),'inkdrive-notices-'));t.after(()=>rm(root,{recursive:true,force:true}));
   const client={html:async url=>{
     if(url==='https://plato.pusan.ac.kr/')return `{"sesskey":"memoryonly"}`;
-    if(url.includes('/course/'))return `<a href='/mod/assign/view.php?id=7'>과제</a><a href='/mod/forum/view.php?id=9'>공지</a>`;
+    if(url.includes('/course/'))return `<a href='/mod/url/view.php?id=6'>외부 수업 링크</a><a href='/mod/assign/view.php?id=7'>과제</a><a href='/mod/forum/view.php?id=9'>공지</a>`;
+    if(url.includes('/mod/url/'))throw new Error('external target must not receive the school session');
     if(url.includes('/assign/'))return `<h1>과제 11월 3일</h1><script>M.cfg={sesskey:'must-not-persist'}</script><a href='/pluginfile.php/7/assignment.pdf'>첨부</a>`;
     if(url.includes('/forum/view'))return `<a href='/mod/forum/discuss.php?d=11'>공지</a>`;
     if(url.includes('/forum/discuss'))return `<h1>수업자료</h1><script>token='must-not-persist'</script><a href='/pluginfile.php/11/notice.pdf'>첨부</a>`;
@@ -49,6 +57,7 @@ test('assignment and notice attachments are collected while scripts and session 
   assert.equal((await syncCampus({root,client,deviceId:'test'})).downloaded,2);
   const folder=join(root,'2026-0020','통계_IE1_066');assert.equal((await readdir(join(folder,'강의자료'))).length,2);
   for(const name of ['assign_7.txt','notice_11.txt'])assert.doesNotMatch(await readFile(join(folder,'일정',name),'utf8'),/must-not-persist|sesskey|token/);
+  assert.match(await readFile(join(folder,'일정','url_6.txt'),'utf8'),/https:\/\/plato\.pusan\.ac\.kr\/mod\/url\/view\.php\?id=6/);
   assert.equal(text('<h1>내용</h1><style>private</style><script>private</script>'),'내용');
 });
 test('download interrupted before completion never publishes an attachment or a successful sync state',async t=>{

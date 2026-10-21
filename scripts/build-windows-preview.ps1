@@ -7,7 +7,7 @@ New-Item -ItemType Directory -Path $out -Force | Out-Null
 $wpf = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\WPF'
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $refs = @("/r:$package\lib\net462\Microsoft.Web.WebView2.Core.dll", "/r:$package\lib\net462\Microsoft.Web.WebView2.Wpf.dll",
-  "/r:$wpf\PresentationFramework.dll", "/r:$wpf\PresentationCore.dll", "/r:$wpf\WindowsBase.dll", '/r:System.Xaml.dll', '/r:System.Net.Http.dll', '/r:System.Windows.Forms.dll', '/r:System.Web.Extensions.dll')
+  "/r:$wpf\PresentationFramework.dll", "/r:$wpf\PresentationCore.dll", "/r:$wpf\WindowsBase.dll", '/r:System.Xaml.dll', '/r:System.Net.Http.dll', '/r:System.Windows.Forms.dll', '/r:System.Web.Extensions.dll', '/r:System.Security.dll')
 & $compiler /nologo /target:winexe /platform:x64 "/out:$out\InkDrive.exe" "/win32manifest:$repo\windows\native\app.manifest" @refs "$repo\windows\native\App.cs"
 if ($LASTEXITCODE -ne 0) { throw 'Windows preview compilation failed' }
 Copy-Item -LiteralPath "$package\lib\net462\Microsoft.Web.WebView2.Core.dll", "$package\lib\net462\Microsoft.Web.WebView2.Wpf.dll", "$package\runtimes\win-x64\native\WebView2Loader.dll" -Destination $out -Force

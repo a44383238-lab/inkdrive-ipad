@@ -60,6 +60,9 @@ import UIKit
         XCTAssertFalse(CampusHTML.safeName("../../x.pdf").contains("/"))
         XCTAssertEqual(CampusHTML.text("<h1>과제</h1><script>M.cfg={sesskey:'private'}</script><style>hidden</style>"), "과제")
         XCTAssertEqual(CampusHTML.pluginFiles("<a href='https://evil.test/pluginfile.php/a.pdf'>bad</a>").count, 0)
+        XCTAssertEqual(CampusHTML.pluginFiles("<img src='/pluginfile.php/1/user/icon/f1.jpg'><img src='/pluginfile.php/2/theme_coursemos/favicon/1/favicon.ico'><a href='/pluginfile.php/3/mod_assign/introattachment/0/lecture.pdf'>자료</a>").count, 1)
+        XCTAssertEqual(CampusHTML.attachmentName("attachment; filename*=UTF-8''%EA%B3%BC%EC%A0%9C.pdf", fallback: "x"), "과제.pdf")
+        XCTAssertTrue(CampusHTML.attachmentName("attachment; filename=\"" + String(repeating: "과제", count: 80) + ".pdf\"", fallback: "x").hasSuffix(".pdf"))
     }
     func testAdapterPreservesOriginalSlideUnitsAndStableIDsAfterReorder() throws {
         let id = UUID(), other = UUID()

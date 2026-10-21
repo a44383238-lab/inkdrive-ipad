@@ -61,12 +61,22 @@ enum CampusHTML {
         var seen = Set<String>()
         return matches("(?:href|src)=[\"']([^\"']*pluginfile\\.php[^\"']*)[\"']", html).compactMap {
             guard let url = URL(string: $0[1].replacingOccurrences(of: "&amp;", with: "&"), relativeTo: URL(string: "https://plato.pusan.ac.kr/"))?.absoluteURL,
-                  url.host == "plato.pusan.ac.kr", url.scheme == "https", seen.insert(url.absoluteString).inserted else { return nil }; return url
+                  url.host == "plato.pusan.ac.kr", url.scheme == "https",
+                  url.path.range(of: "/(?:user/icon|course/overviewfiles|theme_[^/]+)/", options: .regularExpression) == nil,
+                  seen.insert(url.absoluteString).inserted else { return nil }; return url
         }
     }
     static func safeName(_ value: String) -> String {
         var name = String(value.replacingOccurrences(of: "[<>:\"/\\\\|?*\\p{Cc}]", with: "_", options: .regularExpression).prefix(90)).trimmingCharacters(in: CharacterSet(charactersIn: " ."))
         if (try? FileNames.checked(name)) == nil { name = "자료_" + String(CoordinatedStore.digest(Data(value.utf8)).prefix(10)) }; return name
+    }
+    static func attachmentName(_ disposition: String, fallback: String) -> String {
+        let encoded = matches("filename\\*=UTF-8''([^;]+)", disposition).first?[1]
+        var name = encoded?.removingPercentEncoding ?? matches("filename=\"([^\"]+)\"", disposition).first?[1]
+            ?? matches("filename=([^;]+)", disposition).first?[1] ?? fallback
+        if let bytes = name.data(using: .isoLatin1), let decoded = String(data: bytes, encoding: .utf8) { name = decoded }
+        let ext = matches("(\\.[A-Za-z0-9]{1,12})$", name).first?[1] ?? ""
+        return safeName(ext.isEmpty ? name : String(name.dropLast(ext.count))) + ext
     }
 }
 
@@ -146,6 +156,12 @@ final class CampusRedirects: NSObject, URLSessionTaskDelegate {
                     let resources = CampusHTML.resources(page); state.resources[String(course.id)] = resources
                     for item in resources {
                         var detail: String?
+                        if item.kind == "url" {
+                            let folder = try courseFolder(course, root: root).appendingPathComponent("일정")
+                            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                            try Data("\(item.title)\n\(item.url)".utf8).write(to: folder.appendingPathComponent("url_\(item.id).txt"), options: .atomic)
+                            continue
+                        }
                         if item.kind == "assign" || item.kind == "page" || item.kind == "url" {
                             detail = try await html(item.url)
                             let folder = try courseFolder(course, root: root).appendingPathComponent("일정")
@@ -228,7 +244,7 @@ final class CampusRedirects: NSObject, URLSessionTaskDelegate {
         }
         let folder = try courseFolder(course, root: root).appendingPathComponent("강의자료")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let name = CampusHTML.safeName(response.suggestedFilename ?? item.title), base = URL(fileURLWithPath: name)
+        let name = CampusHTML.attachmentName(disposition, fallback: response.suggestedFilename ?? item.title), base = URL(fileURLWithPath: name)
         let filename = "\(base.deletingPathExtension().lastPathComponent)__\(item.id)__\(hash.prefix(12))" + (base.pathExtension.isEmpty ? "" : "." + base.pathExtension)
         let target = folder.appendingPathComponent(filename)
         if FileManager.default.fileExists(atPath: target.path) {

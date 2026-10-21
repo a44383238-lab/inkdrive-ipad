@@ -31,8 +31,17 @@ export function resources(html) {
 }
 export function pluginFiles(html) {
   return [...new Set([...html.matchAll(/(?:href|src)=["']([^"']*pluginfile\.php[^"']*)["']/gi)].flatMap(m => {
-    try { const url = schoolURL(m[1]); return url.hostname === 'plato.pusan.ac.kr' ? [url.href] : []; } catch { return []; }
+    try { const url = schoolURL(m[1]); return url.hostname === 'plato.pusan.ac.kr' && !/\/(?:user\/icon|course\/overviewfiles|theme_[^/]+)\//i.test(url.pathname) ? [url.href] : []; } catch { return []; }
   }))];
+}
+export function attachmentName(disposition, fallback) {
+  const encoded=/filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  let name;try{name=encoded?decodeURIComponent(encoded):/filename="([^"]+)"/i.exec(disposition)?.[1] ?? /filename=([^;]+)/i.exec(disposition)?.[1]?.trim();}catch{}
+  if(name && [...name].every(c=>c.charCodeAt(0)<=255)) {
+    try { name=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.from(name,'latin1')); } catch {}
+  }
+  name=name||fallback; const extension=/\.[A-Za-z0-9]{1,12}$/.exec(name)?.[0]??'';
+  return safeName(extension?name.slice(0,-extension.length):name)+extension;
 }
 async function atomic(root, relative, bytes) {
   const path = await resolveInside(root,relative,true); await mkdir(dirname(path),{recursive:true});
@@ -83,11 +92,16 @@ export async function syncCampus({root,client,deviceId,manual=false,now=Date.now
   if(state.courses.some(c=>!Number.isSafeInteger(c.id)||c.id<1))throw new Error('과목 식별자를 확인해 주세요.');
   const term=state.courses.map(courseIdentity).filter(Boolean).map(i=>i.term).sort().at(-1); let downloaded=0;
   for(const course of state.courses.filter(c=>courseIdentity(c)?.term===term && term)) {
+    client.stage={course:course.id};
     const info=courseIdentity(course),folder=`${info.term}/${safeName(course.fullname)}_${info.code}`;
     await atomic(root,`${folder}/.campus-course.json`,JSON.stringify(course));
     const items=resources(await client.html(`https://plato.pusan.ac.kr/course/view.php?id=${course.id}&mode=sections`)); state.resources[course.id]=items;
     for(const item of items) {
+      client.stage={course:course.id,resource:item.id,kind:item.kind};
       let detail=null;
+      if(item.kind==='url') {
+        await atomic(root,`${folder}/일정/url_${item.id}.txt`,`${item.title}\n${item.url}`);continue;
+      }
       if(['assign','url','page'].includes(item.kind)) {
         detail=await client.html(item.url);await atomic(root,`${folder}/일정/${item.kind}_${item.id}.txt`,text(detail));
       }
@@ -107,9 +121,7 @@ export async function syncCampus({root,client,deviceId,manual=false,now=Date.now
         const chunks=[];let size=0;for await(const chunk of response.body){size+=chunk.length;if(size>256_000_000)throw new Error('자료 크기 제한');chunks.push(chunk);}
         const bytes=Buffer.concat(chunks);if(!bytes.length)throw new Error('빈 자료');const sha=hash(bytes);
         if(old?.sha256===sha){try{await stat(await resolveInside(root,old.path));state.attachments[key]={...old,checked:new Date(now).toISOString()};continue;}catch(e){if(e.code!=='ENOENT')throw e;}}
-        const disposition=response.headers.get('content-disposition')??'',encoded=/filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
-        let name;try{name=encoded?decodeURIComponent(encoded):/filename="([^"]+)"/i.exec(disposition)?.[1];}catch{}
-        name=safeName(name||new URL(url).pathname.split('/').at(-1)||item.title);const ext=extname(name),base=name.slice(0,name.length-ext.length);
+        const name=attachmentName(response.headers.get('content-disposition')??'',new URL(url).pathname.split('/').at(-1)||item.title),ext=extname(name),base=name.slice(0,name.length-ext.length);
         const relative=`${folder}/강의자료/${base}__${item.id}__${sha.slice(0,12)}${ext}`;
         try{const existing=await readFile(await resolveInside(root,relative));if(hash(existing)!==sha)throw new Error('기존 자료를 덮어쓰지 않았어요.');}catch(e){if(e.code!=='ENOENT')throw e;await atomic(root,relative,bytes);}
         state.attachments[key]={sha256:sha,path:relative,checked:new Date(now).toISOString()};downloaded++;

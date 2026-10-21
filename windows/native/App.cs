@@ -10,6 +10,8 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using System.Windows.Markup;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -39,7 +41,7 @@ public sealed class InkDriveApp : Application {
         top.Children.Add(Action("지금 확인",()=>{var ignored=Check(true);}));
         top.Children.Add(Action("수업 정리",()=>{var ignored=OpenAI();}));
         top.Children.Add(Action("폴더 연결",()=>{var ignored=ChooseRoot();}));
-        top.Children.Add(Action("로그아웃",()=>{if(school.CoreWebView2!=null){school.CoreWebView2.CookieManager.DeleteAllCookies();ShowSchool("https://plato.pusan.ac.kr/");status.Text="로그아웃됨";}}));
+        top.Children.Add(Action("로그아웃",()=>{if(school.CoreWebView2!=null){school.CoreWebView2.CookieManager.DeleteAllCookies();try{File.Delete(Path.Combine(local,"school-session.bin"));}catch{}ShowSchool("https://plato.pusan.ac.kr/");status.Text="로그아웃됨";}}));
         DockPanel.SetDock(top,Dock.Top);dock.Children.Add(top);
         status=new TextBlock{Text="준비 중",Margin=new Thickness(18,8,18,12),Foreground=Brushes.SlateGray};DockPanel.SetDock(status,Dock.Bottom);dock.Children.Add(status);
         var grid=new Grid();library=new WebView2();school=new WebView2{Visibility=Visibility.Collapsed};grid.Children.Add(library);grid.Children.Add(school);dock.Children.Add(grid);window.Content=dock;
@@ -47,6 +49,8 @@ public sealed class InkDriveApp : Application {
             try{
                 var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(local,"WebView2"));
                 await library.EnsureCoreWebView2Async(env);await school.EnsureCoreWebView2Async(env);
+                RestoreSession();
+                school.CoreWebView2.NavigationCompleted+=async delegate{await SaveSession();};
                 foreach(var view in new[]{library,school}){
                     view.CoreWebView2.Settings.AreHostObjectsAllowed=false;view.CoreWebView2.Settings.IsWebMessageEnabled=false;
                     view.CoreWebView2.NewWindowRequested+=delegate(object s,CoreWebView2NewWindowRequestedEventArgs e){e.Handled=true;Uri uri;if(Uri.TryCreate(e.Uri,UriKind.Absolute,out uri)&&Allowed(uri))school.Source=uri;};
@@ -65,6 +69,28 @@ public sealed class InkDriveApp : Application {
         window.Closed+=delegate{Stop(server);};Run(window);
     }
     private static bool Allowed(Uri uri){return uri.Scheme=="https"&&(uri.Host=="plato.pusan.ac.kr"||uri.Host=="onestop.pusan.ac.kr"||uri.Host=="login.pusan.ac.kr");}
+    private async Task SaveSession(){
+        try{
+            var values=new List<object>();
+            foreach(var c in await school.CoreWebView2.CookieManager.GetCookiesAsync(null)){
+                var domain=c.Domain.TrimStart('.');if(domain!="pusan.ac.kr"&&domain!="plato.pusan.ac.kr"&&domain!="onestop.pusan.ac.kr"&&domain!="login.pusan.ac.kr")continue;
+                values.Add(new {name=c.Name,value=c.Value,domain=c.Domain,path=c.Path,secure=c.IsSecure,httpOnly=c.IsHttpOnly,expires=c.IsSession?-1:(c.Expires.ToUniversalTime()-new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc)).TotalSeconds});
+            }
+            File.WriteAllBytes(Path.Combine(local,"school-session.bin"),ProtectedData.Protect(Encoding.UTF8.GetBytes(json.Serialize(values)),null,DataProtectionScope.CurrentUser));
+        }catch{}
+    }
+    private void RestoreSession(){
+        try{
+            var bytes=File.ReadAllBytes(Path.Combine(local,"school-session.bin"));if(bytes.Length>1000000)return;
+            var values=json.DeserializeObject(Encoding.UTF8.GetString(ProtectedData.Unprotect(bytes,null,DataProtectionScope.CurrentUser)));
+            foreach(var value in (System.Collections.IEnumerable)values){
+                var c=(Dictionary<string,object>)value;var domain=((string)c["domain"]).TrimStart('.');if(domain!="pusan.ac.kr"&&domain!="plato.pusan.ac.kr"&&domain!="onestop.pusan.ac.kr"&&domain!="login.pusan.ac.kr")continue;
+                var expiry=Convert.ToDouble(c["expires"]);if(expiry>0&&expiry<(DateTime.UtcNow-new DateTime(1970,1,1)).TotalSeconds)continue;
+                var cookie=school.CoreWebView2.CookieManager.CreateCookie((string)c["name"],(string)c["value"],(string)c["domain"],(string)c["path"]);
+                cookie.IsSecure=(bool)c["secure"];cookie.IsHttpOnly=(bool)c["httpOnly"];if(expiry>0)cookie.Expires=new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc).AddSeconds(expiry);school.CoreWebView2.CookieManager.AddOrUpdateCookie(cookie);
+            }
+        }catch{}
+    }
     private void ShowLibrary(string path){school.Visibility=Visibility.Collapsed;library.Visibility=Visibility.Visible;if(library.CoreWebView2!=null){var target=Url+path;if(library.CoreWebView2.Source==target)library.Reload();else library.Source=new Uri(target);}}
     private void ShowSchool(string url){library.Visibility=Visibility.Collapsed;school.Visibility=Visibility.Visible;if(school.CoreWebView2!=null)school.Source=new Uri(url);}
     private static void Stop(Process p){if(p==null)return;try{if(!p.HasExited)p.Kill();}catch{}p.Dispose();}
@@ -88,6 +114,7 @@ public sealed class InkDriveApp : Application {
     private async Task Check(bool manual){
         if(checking||String.IsNullOrEmpty(root)||school.CoreWebView2==null)return;checking=true;lastCheck=DateTime.Now;status.Text="학교 확인 중";
         try{
+            await SaveSession();
             var cookies=new List<object>();foreach(var host in new[]{"https://plato.pusan.ac.kr/","https://onestop.pusan.ac.kr/","https://login.pusan.ac.kr/"}){
                 foreach(var c in await school.CoreWebView2.CookieManager.GetCookiesAsync(host))cookies.Add(new {name=c.Name,value=c.Value,domain=c.Domain,path=c.Path,secure=c.IsSecure,httpOnly=c.IsHttpOnly,expires=c.IsSession?-1:(c.Expires.ToUniversalTime()-new DateTime(1970,1,1,0,0,0,DateTimeKind.Utc)).TotalSeconds});
             }
@@ -97,7 +124,7 @@ public sealed class InkDriveApp : Application {
                 process.StandardInput.Write(json.Serialize(new {root=root,cookies=cookies,deviceId=File.ReadAllText(deviceFile),manual=manual}));process.StandardInput.Close();
                 var output=await process.StandardOutput.ReadToEndAsync();await process.StandardError.ReadToEndAsync();await Task.Run(()=>process.WaitForExit());
                 var result=json.Deserialize<Dictionary<string,object>>(output);output=null;
-                if(!(bool)result["ok"]){status.Text="학교 로그인을 확인해 주세요.";return;}
+                if(!(bool)result["ok"]){status.Text=result.ContainsKey("message")?(string)result["message"]:"학교 확인을 다시 시도해 주세요.";if(result.ContainsKey("stage")&&result["stage"] is Dictionary<string,object>){var stage=(Dictionary<string,object>)result["stage"];if(stage.ContainsKey("resource"))status.Text+=" · 자료 "+stage["resource"];}return;}
                 foreach(var value in (System.Collections.IEnumerable)result["cookies"]){
                     var c=(Dictionary<string,object>)value;if(!c.ContainsKey("name"))continue;
                     var cookie=school.CoreWebView2.CookieManager.CreateCookie((string)c["name"],(string)c["value"],(string)c["domain"],(string)c["path"]);
@@ -106,6 +133,7 @@ public sealed class InkDriveApp : Application {
                     school.CoreWebView2.CookieManager.AddOrUpdateCookie(cookie);
                 }
                 status.Text="확인 완료 · "+DateTime.Now.ToString("HH:mm");
+                await SaveSession();
             }
         }catch{status.Text="학교 로그인·네트워크·서재 접근을 확인해 주세요.";}finally{checking=false;}
     }
