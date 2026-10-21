@@ -44,8 +44,9 @@ import PencilKit
             let original = originals.appendingPathComponent(snapshot.digest + ".pdf")
             if !FileManager.default.fileExists(atPath: original.path) { try snapshot.data.write(to: original, options: .withoutOverwriting) }
             session.commits = try InkCommitStore(root: root, documentID: session.model.documentID, documentURL: url)
+            if session.model.needsIdentityPersistence { session.preservePageIdentities() }
         }
-        if recovered != nil { session.revision = 1 }
+        if recovered != nil { session.preservePageIdentities() }
         return session
     }
     func changeDrawing(pageID: UUID, to new: PKDrawing) {

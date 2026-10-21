@@ -141,11 +141,14 @@ struct LessonRecord: Codable {
     }
     func quickLesson(pdf: String, date: String) throws -> LessonRecord {
         if let existing = try lessons(date: date).last(where: { $0.pdf == pdf && $0.endedAt == nil }) { return existing }
-        let components = pdf.split(separator: "/").map(String.init)
+        let rootScope = try access(), pdfURL = try FileNames.child(pdf, in: rootScope.url)
+        let adapter = (try? Data(contentsOf: URL(fileURLWithPath: pdfURL.path + ".adapter.json"))).flatMap { try? JSONDecoder().decode(DocumentAdapter.self, from: $0) }
+        let material = adapter?.originalPath ?? pdf
+        _ = try FileNames.child(material, in: rootScope.url)
+        let components = material.split(separator: "/").map(String.init)
         let title = URL(fileURLWithPath: components.last ?? pdf).deletingPathExtension().lastPathComponent
         var subject = components.count > 1 ? components[components.count - 2] : "수업"
         var courseID: String?
-        let rootScope = try access()
         if components.count > 1 {
             for count in stride(from: components.count - 1, through: 1, by: -1) {
                 let folder = try FileNames.child(components.prefix(count).joined(separator: "/"), in: rootScope.url)
@@ -154,7 +157,7 @@ struct LessonRecord: Codable {
                 }
             }
         }
-        var lesson = LessonRecord(id: UUID().uuidString, date: date, subject: subject, title: title, pdf: pdf, recordings: [], materials: [], endedAt: nil)
+        var lesson = LessonRecord(id: UUID().uuidString, date: date, subject: subject, title: title, pdf: pdf, recordings: [], materials: adapter == nil ? [] : [material], endedAt: nil)
         lesson.courseID = courseID
         try saveLesson(lesson); return lesson
     }

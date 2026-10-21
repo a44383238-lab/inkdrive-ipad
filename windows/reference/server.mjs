@@ -47,7 +47,7 @@ export function createReferenceServer({root=null,cache=null}={}) {
       if(['/today','/today.mjs'].includes(req.url)){res.writeHead(200,{'Content-Type':req.url==='/today'?'text/html; charset=utf-8':'text/javascript'});res.end(await readFile(join(here,req.url==='/today'?'today.html':'today.mjs')));return;}
       if (req.url === '/fixture.pdf') { res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': pdf.length }); res.end(pdf); return; }
       if (req.url === '/fixture.ink.json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(ink)); return; }
-      const route = routes[req.url]; if (!route) { res.writeHead(404); res.end(); return; }
+      const route = routes[url.pathname]; if (!route) { res.writeHead(404); res.end(); return; }
       const bytes = await readFile(resolve(here, route[0])); res.writeHead(200, { 'Content-Type': `${route[1]}; charset=utf-8` }); res.end(bytes);
     } catch { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('참조 뷰어 구성 파일이 없어요. windows/reference에서 npm ci를 실행해 주세요.'); }
   });

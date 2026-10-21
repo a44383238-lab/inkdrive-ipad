@@ -14,6 +14,7 @@ final class NotebookPage {
 final class PDFModel {
     let pdf: PDFDocument
     let documentID: UUID
+    let needsIdentityPersistence: Bool
     private(set) var pages: [NotebookPage]
     init(data: Data, documentID: UUID? = nil, pageIDs: [UUID]? = nil) throws {
         guard let document = PDFDocument(data: data) else { throw InkError.invalidPDF }
@@ -22,6 +23,7 @@ final class PDFModel {
         guard document.allowsCommenting, document.allowsDocumentChanges else { throw InkError.readOnly }
         var records: [NotebookPage] = []
         var documentIDs = Set<UUID>()
+        var missingPageID = false
         for index in 0..<document.pageCount {
             guard let page = document.page(at: index) else { throw InkError.invalidPDF }
             let crop = page.bounds(for: .cropBox)
@@ -33,6 +35,7 @@ final class PDFModel {
             let drawing = try owned.first.map(InkAnnotation.decode) ?? PKDrawing()
             owned.forEach(page.removeAnnotation)
             let identities = page.annotations.filter { $0.userName == "InkDrive.PageID.v1" }
+            if identities.first.flatMap({ UUID(uuidString: $0.contents ?? "") }) == nil { missingPageID = true }
             let id = identities.first.flatMap { UUID(uuidString: $0.contents ?? "") } ?? (pageIDs?.indices.contains(index) == true ? pageIDs![index] : UUID())
             identities.forEach(page.removeAnnotation)
             let docs = page.annotations.filter { $0.userName == "InkDrive.DocumentID.v1" }
@@ -43,6 +46,7 @@ final class PDFModel {
         guard documentIDs.count <= 1, Set(records.map(\.id)).count == records.count else { throw InkError.corruptInk }
         if let documentID, let embedded = documentIDs.first, documentID != embedded { throw InkError.conflict }
         self.documentID = documentIDs.first ?? documentID ?? UUID()
+        self.needsIdentityPersistence = documentIDs.isEmpty || missingPageID
         self.pdf = document; self.pages = records
     }
     func record(for page: PDFPage) -> NotebookPage? { pages.first { $0.page === page } }

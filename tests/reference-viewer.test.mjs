@@ -9,6 +9,7 @@ test('reference server serves a hash-matched 100-page PDF/ink pair without readi
   const server = createReferenceServer(); await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}`;
+  assert.equal((await fetch(base+'/?path=real-document.pdf')).status,200);
   const bytes = Buffer.from(await (await fetch(base + '/fixture.pdf')).arrayBuffer());
   const ink = validateInk(await (await fetch(base + '/fixture.ink.json')).json());
   assert.equal(ink.pages.length, 100); assert.match(bytes.toString(), /\/Count 100/);

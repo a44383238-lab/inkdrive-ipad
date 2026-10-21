@@ -94,4 +94,35 @@ import UIKit
         let reopened = try InkCommitStore(root: root, documentID: model.documentID, documentURL: url)
         XCTAssertNoThrow(try reopened.checkHead())
     }
+    func testLibraryDocumentIdentityIsPersistedOnceBeforeAnyHandwriting() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), repository = LibraryRepository(defaults: defaults)
+        try repository.choose(root)
+        let path = try repository.createNote(parent: "", name: "lecture", template: "plain")
+        let first = try await repository.open(path)
+        XCTAssertTrue(first.dirty); try await first.flush()
+        let bytes = try Data(contentsOf: root.appendingPathComponent(path))
+        let second = try await repository.open(path)
+        XCTAssertFalse(second.dirty); XCTAssertEqual(second.model.documentID, first.model.documentID)
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent(path)), bytes)
+    }
+    func testSnapshotRecordingUsesTheOriginalCourseAndMaterial() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("통계/강의자료"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString)), repository = LibraryRepository(defaults: defaults)
+        try repository.choose(root)
+        let course = CampusCourse(id: 9, fullname: "통계", shortname: "통계 (2026-0020, IE1_066)")
+        try JSONEncoder().encode(course).write(to: root.appendingPathComponent("통계/.campus-course.json"))
+        let material = "통계/강의자료/자료.pptx", source = Data("original presentation fixture".utf8)
+        try source.write(to: root.appendingPathComponent(material))
+        let path = try repository.createNote(parent: "", name: "snapshot", template: "plain")
+        let adapter = DocumentAdapter(kind: "pptx", originalPath: material, originalSHA256: CoordinatedStore.digest(source), width: 9144000, height: 6858000)
+        try JSONEncoder().encode(adapter).write(to: URL(fileURLWithPath: root.appendingPathComponent(path).path + ".adapter.json"))
+        let lesson = try repository.quickLesson(pdf: path, date: "2026-10-21")
+        XCTAssertEqual(lesson.subject, "통계"); XCTAssertEqual(lesson.title, "자료"); XCTAssertEqual(lesson.courseID, "9")
+        XCTAssertEqual(lesson.materials, [material])
+    }
 }
