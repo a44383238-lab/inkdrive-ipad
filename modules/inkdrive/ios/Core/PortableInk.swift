@@ -44,7 +44,8 @@ enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupport
               [0, 90, 180, 270].contains(rotation) else { throw PortableInkError.bounds }
         let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var count = 0
-        let strokes: [PortableInkStroke] = try drawing.strokes.enumerated().map { index, stroke in
+        var strokes: [PortableInkStroke] = []
+        for (index, stroke) in drawing.strokes.enumerated() {
             // Preserve the pretransform eraser clipping path as document-coordinate commands.
             let tool: String
             switch stroke.ink.inkType {
@@ -59,8 +60,10 @@ enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupport
             let color = String(format: "#%02X%02X%02X", Int((r * 255).rounded()), Int((g * 255).rounded()), Int((b * 255).rounded()))
             let t = stroke.transform
             // F * strokeTransform * F^-1, where F maps canvas top-left into actual PDF crop user-space.
-            let transform = [t.a, -t.b, -t.c, t.d, crop.minX + t.tx - t.a * crop.minX + t.c * crop.maxY,
-                             crop.maxY - t.ty + t.b * crop.minX - t.d * crop.maxY].map(Double.init)
+            let tx: CGFloat = crop.minX + t.tx - t.a * crop.minX + t.c * crop.maxY
+            let ty: CGFloat = crop.maxY - t.ty + t.b * crop.minX - t.d * crop.maxY
+            let coefficients: [CGFloat] = [t.a, -t.b, -t.c, t.d, tx, ty]
+            let transform: [Double] = coefficients.map { Double($0) }
             let samples: [PortableInkSample] = try stroke.path.interpolatedPoints(by: .distance(0.5)).map { point in
                 count += 1; guard count <= 2_000_000 else { throw PortableInkError.sampleBudget }
                 let values = [point.location.x, point.location.y, point.size.width, point.size.height, point.force, point.opacity]
@@ -95,7 +98,7 @@ enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupport
                 guard commands.allSatisfy({ $0.first != -1 && $0.allSatisfy(\.isFinite) }) else { throw PortableInkError.unsupportedMask }
                 output.mask = commands; output.maskEvenOdd = mask.usesEvenOddFillRule
             }
-            return output
+            strokes.append(output)
         }
         let page = PortableInkPage(id: pageID.uuidString.lowercased(), kind: "pdf", unit: "pt",
             bounds: PortableInkBounds(x: Double(crop.minX), y: Double(crop.minY), width: Double(crop.width), height: Double(crop.height)),
