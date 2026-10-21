@@ -155,7 +155,7 @@ enum LibraryScreen { case library, today, campus, settings }
             for (from, to) in mappings { if path == from { return to }; if path.hasPrefix(from + "/") { return to + path.dropFirst(from.count) } }
             return path
         }
-        recent = recent.map(remap); favorites = Set(favorites.map(remap)); folderColors = Dictionary(uniqueKeysWithValues: folderColors.map { (remap($0.key), $0.value) })
+        recent = recent.map(remap); favorites = Set(favorites.map(remap)); folderColors = Dictionary(folderColors.map { (remap($0.key), $0.value) }, uniquingKeysWith: { _, newer in newer })
         UserDefaults.standard.set(recent, forKey: "library.recent"); UserDefaults.standard.set(Array(favorites), forKey: "library.favorites"); UserDefaults.standard.set(folderColors, forKey: "library.folder-colors")
         let rootID = (try? repository.access().url.absoluteString) ?? rootName ?? "InkDrive"
         let key = "inkdrive.document-tabs." + CoordinatedStore.digest(Data(rootID.utf8))

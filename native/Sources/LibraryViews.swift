@@ -124,6 +124,9 @@ struct LibraryRootView: View {
             Spacer()
             Text(store.screen == .library ? (category == 1 ? "최근 목록" : category == 2 ? "즐겨찾기" : store.breadcrumbs.last.map(LibraryEntry.folderTitle) ?? "문서") : store.screen == .today ? "수업" : store.screen == .campus ? "학교" : "설정").font(.system(size: 14, weight: .semibold))
             Spacer()
+            if store.activeRecording {
+                Button(action: store.stopRecording) { HStack(spacing: 5) { Image(systemName: "stop.circle.fill"); Text(RecordingBrowserController.timestamp(store.elapsed)).monospacedDigit().font(.system(size: 11)) }.foregroundStyle(.red).frame(minHeight: 44) }.accessibilityLabel("녹음 종료")
+            }
             if store.screen == .library {
                 IconAction(icon: selecting ? "x" : "circle-check", label: selecting ? "선택 완료" : "문서 선택") { selecting.toggle(); selected.removeAll() }
             }

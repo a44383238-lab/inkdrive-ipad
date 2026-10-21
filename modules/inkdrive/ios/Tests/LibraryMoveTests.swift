@@ -19,6 +19,27 @@ import XCTest
         XCTAssertEqual(try repo.lessons(date: "2026-10-21").first?.pdf, "B/A/note.pdf")
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("A").path))
     }
+    func testMovesUpdateAdaptersOutsideSourceFolderAndUnreadableCatalogAborts() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let suite = "InkDrive-move-" + UUID().uuidString, defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let repo = LibraryRepository(defaults: defaults); try repo.choose(root)
+        try repo.createFolder(parent: "", name: "A"); try repo.createFolder(parent: "", name: "B")
+        try Data("source".utf8).write(to: root.appendingPathComponent("A/source.html"))
+        let cache = root.appendingPathComponent(".inkdrive/previews", isDirectory: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        let adapter = DocumentAdapter(kind: "html-snapshot", originalPath: "A/source.html", originalSHA256: "hash", width: 500, height: 700)
+        let file = cache.appendingPathComponent("notebook.pdf.adapter.json")
+        try JSONEncoder().encode(adapter).write(to: file)
+        _ = try repo.moveItems(["A"], into: "B")
+        XCTAssertEqual(try JSONDecoder().decode(DocumentAdapter.self, from: Data(contentsOf: file)).originalPath, "B/A/source.html")
+        try Data("not a directory".utf8).write(to: root.appendingPathComponent(".inkdrive/lessons"))
+        XCTAssertThrowsError(try repo.moveItems(["B/A"], into: ""))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("B/A/source.html").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("A").path))
+    }
     func testDestinationCollisionAndDescendantMoveLeaveSourcesUntouched() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

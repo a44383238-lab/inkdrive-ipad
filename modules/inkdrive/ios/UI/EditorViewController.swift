@@ -508,6 +508,7 @@ import AVFoundation
     @objc private func closeEditor() {
         guard !closing, !switchingDocument, !startingRecording else { return }
         closing = true; view.isUserInteractionEnabled = false
+        recordingBrowser?.shutdown(); recordingBrowser = nil; recordingStrip.isHidden = true
         Task {
             do {
                 try await Task.sleep(nanoseconds: 220_000_000)
