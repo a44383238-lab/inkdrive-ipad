@@ -37,7 +37,7 @@ import UIKit
             let paletteTitle = UILabel(); paletteTitle.text = "기본 색상"; paletteTitle.font = .systemFont(ofSize: 11); paletteTitle.textColor = .secondaryLabel; stack.addArrangedSubview(paletteTitle)
             let swatches = UIStackView(); swatches.distribution = .fillEqually; swatches.spacing = 0
             for hex in ["#E60012", "#F17B00", "#F3C800", "#63D538", "#33CBAA", "#22BDED", "#2455D6", "#6229D5", "#B308E0", "#747474", "#FFFFFF", "#111111"] {
-                let dot = InkColorButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.layer.cornerRadius = 0
+                let dot = UIButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.layer.cornerRadius = 0
                 dot.heightAnchor.constraint(equalToConstant: 24).isActive = true
                 dot.accessibilityLabel = "색상 " + hex
                 dot.addAction(UIAction { [weak self] _ in self?.settings.color = hex; self?.publish() }, for: .touchUpInside)
@@ -56,7 +56,7 @@ import UIKit
             let recentTitle = UILabel(); recentTitle.text = "최근 색상"; recentTitle.font = .systemFont(ofSize: 11); recentTitle.textColor = .secondaryLabel; stack.addArrangedSubview(recentTitle)
             let recent = UIStackView(); recent.spacing = 0; recent.distribution = .fillEqually
             for hex in UserDefaults.standard.stringArray(forKey: "inkdrive.recent-colors") ?? ["#202020", "#2455D6", "#DB3249", "#FFFFFF"] {
-                let dot = InkColorButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.heightAnchor.constraint(equalToConstant: 18).isActive = true; dot.accessibilityLabel = "최근 색상 " + hex
+                let dot = UIButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.heightAnchor.constraint(equalToConstant: 18).isActive = true; dot.accessibilityLabel = "최근 색상 " + hex
                 dot.addAction(UIAction { [weak self] _ in self?.settings.color = hex; self?.publish() }, for: .touchUpInside); recent.addArrangedSubview(dot)
             }
             stack.addArrangedSubview(recent)

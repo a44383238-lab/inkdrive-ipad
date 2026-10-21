@@ -105,6 +105,13 @@ import PencilKit
         controller.loadViewIfNeeded()
         XCTAssertTrue(descendants(controller.view).compactMap { ($0 as? UILabel)?.text }.contains("3.0 px"))
     }
+    func testDensePaletteDoesNotSelectAdjacentColor() throws {
+        let panel = ToolPopoverController(tool: .pen, settings: ToolSettings()) { _ in }
+        panel.loadViewIfNeeded(); panel.view.frame = CGRect(x: 0, y: 0, width: 280, height: 520); panel.view.layoutIfNeeded()
+        let red = try XCTUnwrap(descendants(panel.view).compactMap { $0 as? UIButton }.first { $0.accessibilityLabel == "색상 #E60012" })
+        let palette = try XCTUnwrap(red.superview)
+        XCTAssertTrue(palette.hitTest(red.center, with: nil) === red)
+    }
     func testLegacyToolSettingsSurviveTextStyleExtension() throws {
         let original = ToolSettings()
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
