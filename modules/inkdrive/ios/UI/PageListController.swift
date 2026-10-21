@@ -95,7 +95,7 @@ import PDFKit
         cell.textLabel?.text = "\(editor.session.model.pdf.index(for: record.page) + 1) 페이지"
         cell.accessoryType = bookmarks.contains(record.id.uuidString) ? .checkmark : .none
         cell.detailTextLabel?.text = nil
-        cell.imageView?.image = record.page.thumbnail(of: CGSize(width: 60, height: 80), for: .cropBox)
+        cell.imageView?.image = NotebookPreview.image(record, size: CGSize(width: 60, height: 80))
         return cell
     }
     override func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool { modes.selectedSegmentIndex == 0 }

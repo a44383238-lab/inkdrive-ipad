@@ -309,7 +309,7 @@ import AVFoundation
         let index = max(0, min(session.model.pages.count - 1, Int(pageSlider.value.rounded()) - 1))
         guard let page = session.model.pdf.page(at: index) else { return }
         provider.commitAll(); pdfView.go(to: page)
-        pagePreview.image = page.thumbnail(of: CGSize(width: 160, height: 200), for: .cropBox); pagePreview.isHidden = false
+        pagePreview.image = NotebookPreview.image(session.model.pages[index], size: CGSize(width: 160, height: 200)); pagePreview.isHidden = false
         updatePageNumber()
     }
     @objc private func endScrub() { pagePreview.isHidden = true }

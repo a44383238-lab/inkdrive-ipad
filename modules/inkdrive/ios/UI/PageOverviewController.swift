@@ -53,7 +53,7 @@ import PDFKit
             cell.picture.image = nil; cell.number.text = "+"; cell.picture.layer.borderWidth = 1; cell.picture.layer.borderColor = UIColor(white: 0.3, alpha: 1).cgColor; cell.accessibilityLabel = "페이지 추가"
         } else {
             let page = editor.session.model.pages[indexPath.item].page
-            cell.picture.image = page.thumbnail(of: CGSize(width: 260, height: 340), for: .cropBox); cell.number.text = "\(indexPath.item + 1)"
+            cell.picture.image = NotebookPreview.image(editor.session.model.pages[indexPath.item], size: CGSize(width: 260, height: 340)); cell.number.text = "\(indexPath.item + 1)"
             cell.picture.layer.borderWidth = page === editor.pdfView.currentPage ? 2 : 0; cell.picture.layer.borderColor = UIColor(hex: "#F4CA52").cgColor
             cell.accessibilityLabel = "\(indexPath.item + 1) 페이지"
         }

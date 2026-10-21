@@ -81,6 +81,17 @@ import PencilKit
         XCTAssertEqual(reopened.pages[0].id, model.pages[0].id)
         XCTAssertNotNil(PenNibArtwork.image(tool: .pen, color: .red, width: 0.5))
     }
+    func testPagePreviewIncludesUnsavedInkWithoutMutatingPDF() throws {
+        let editor = try editor(), record = editor.session.model.pages[0]
+        let before = NotebookPreview.image(record, size: CGSize(width: 120, height: 160)).pngData()
+        let points = [CGPoint(x: 40, y: 60), CGPoint(x: 150, y: 130)].enumerated().map { index, point in
+            PKStrokePoint(location: point, timeOffset: Double(index) * 0.2, size: CGSize(width: 12, height: 12), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        record.drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.pen, color: .red), path: PKStrokePath(controlPoints: points, creationDate: Date()))])
+        let annotationCount = record.page.annotations.count
+        XCTAssertNotEqual(NotebookPreview.image(record, size: CGSize(width: 120, height: 160)).pngData(), before)
+        XCTAssertEqual(record.page.annotations.count, annotationCount)
+    }
     func testToolSettingsUsePixelUnits() {
         let controller = ToolPopoverController(tool: .pen, settings: ToolSettings()) { _ in }
         controller.loadViewIfNeeded()
