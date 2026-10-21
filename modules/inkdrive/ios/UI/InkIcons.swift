@@ -1,6 +1,14 @@
 import UIKit
 
 final class InkColorButton: UIButton {
+    override var isHighlighted: Bool {
+        didSet {
+            guard !UIAccessibility.isReduceMotionEnabled else { return }
+            UIView.animate(withDuration: isHighlighted ? 0.08 : 0.14, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.91, y: 0.91) : .identity
+            }
+        }
+    }
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         bounds.insetBy(dx: min(0, (bounds.width - 44) / 2), dy: min(0, (bounds.height - 44) / 2)).contains(point)
     }

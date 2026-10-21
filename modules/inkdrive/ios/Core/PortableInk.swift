@@ -49,7 +49,7 @@ enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupport
             // Preserve the pretransform eraser clipping path as document-coordinate commands.
             let tool: String
             switch stroke.ink.inkType {
-            case .pen: tool = "pen"
+            case .pen, .monoline: tool = "pen"
             case .pencil: tool = "pencil"
             case .marker: tool = "marker"
             default: throw PortableInkError.unsupportedTool

@@ -21,7 +21,7 @@ struct IconAction: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) { NativeIcon(name: icon, size: 19).frame(width: 44, height: 44).foregroundStyle(highlighted ? accent : ink.opacity(0.8)) }
-            .buttonStyle(.plain).accessibilityLabel(label).disabled(disabled).opacity(disabled ? 0.3 : 1)
+            .buttonStyle(InkPressStyle()).accessibilityLabel(label).disabled(disabled).opacity(disabled ? 0.3 : 1)
     }
 }
 
@@ -66,7 +66,16 @@ struct LibraryRootView: View {
         .preferredColorScheme(.dark).tint(accent)
         .overlay(alignment: .bottomTrailing) { if store.busy { ProgressView().padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)).padding(24) } }
         .disabled(store.busy)
-        .alert("InkDrive", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("확인", role: .cancel) { store.message = nil } } message: { Text(store.message ?? "") }
+        .overlay { if let message = store.message {
+            ZStack {
+                Color.black.opacity(0.45).ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 18) {
+                    Text("InkDrive").font(.system(size: 15, weight: .semibold))
+                    Text(message).font(.system(size: 13)).foregroundStyle(.secondary)
+                    Button { store.message = nil } label: { Text("확인").frame(maxWidth: .infinity).frame(height: 44).background(Color(white: 0.22), in: RoundedRectangle(cornerRadius: 6)) }.buttonStyle(InkPressStyle())
+                }.padding(20).frame(maxWidth: 360).background(Color(white: 0.145), in: RoundedRectangle(cornerRadius: 12)).padding(24)
+            }.accessibilityAddTraits(.isModal)
+        } }
         .sheet(isPresented: $showMove) { FolderDestinationView(paths: Array(selected)) { folder in
             do { try store.move(Array(selected), into: folder); selected.removeAll(); selecting = false; showMove = false }
             catch { store.message = error.localizedDescription }
@@ -103,7 +112,7 @@ struct LibraryRootView: View {
                             Text(store.entry(path).displayName.replacingOccurrences(of: ".pdf", with: "")).font(.system(size: 11)).lineLimit(1)
                             Spacer(minLength: 0)
                         }.padding(.vertical, 6).padding(.horizontal, 5).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(InkPressStyle())
                 } }
             }
             Spacer(minLength: 0)
@@ -115,7 +124,7 @@ struct LibraryRootView: View {
             HStack(spacing: 12) { NativeIcon(name: icon, size: 18); Text(label).font(.system(size: 13, weight: .medium)); Spacer() }
                 .foregroundStyle(store.screen == screen ? accent : ink).padding(.horizontal, 9).frame(height: 40)
                 .background(store.screen == screen ? .black : .clear, in: RoundedRectangle(cornerRadius: 3))
-        }.buttonStyle(.plain).accessibilityLabel(label)
+        }.buttonStyle(InkPressStyle()).accessibilityLabel(label)
     }
     private var header: some View {
         HStack {
@@ -191,7 +200,7 @@ struct LibraryRootView: View {
                     if store.favorites.contains(entry.path) { Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(entry.directory ? Color.pink : accent).offset(x: -3, y: -2) }
                     if selecting { Image(systemName: selected.contains(entry.path) ? "checkmark.circle.fill" : "circle.fill").foregroundStyle(selected.contains(entry.path) ? accent : .white).background(Circle().stroke(.black, lineWidth: 1)).offset(x: -5, y: 125) }
                 }.opacity(selecting && !selected.contains(entry.path) ? 0.55 : 1)
-            }.buttonStyle(.plain).accessibilityLabel(entry.displayName)
+            }.buttonStyle(InkPressStyle()).accessibilityLabel(entry.displayName)
             HStack(spacing: 3) {
                 Text(entry.displayName.replacingOccurrences(of: ".pdf", with: "", options: .caseInsensitive)).font(.system(size: 11)).lineLimit(2).multilineTextAlignment(.center).frame(maxWidth: .infinity, minHeight: 29)
                 Menu {
@@ -299,16 +308,50 @@ struct CreationSheet: View {
     @State private var template = PaperTemplate.ruled
     @State private var error = ""
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField("이름", text: $name).accessibilityLabel("이름")
-                if !request.folder { Picker("종이", selection: $template) { Text("무지").tag(PaperTemplate.plain); Text("줄노트").tag(PaperTemplate.ruled); Text("모눈").tag(PaperTemplate.grid); Text("노란 줄노트").tag(PaperTemplate.yellowRuled) }.pickerStyle(.segmented) }
-                if !error.isEmpty { Text(error).foregroundStyle(.red).font(.subheadline) }
-            }.navigationTitle(request.folder ? "새 폴더" : "새 노트").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) { Button("취소") { dismiss() } }
-                    ToolbarItem(placement: .topBarTrailing) { Button("만들기") { do { try store.create(name: name, folder: request.folder, template: template); dismiss() } catch { self.error = error.localizedDescription } }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+        VStack(alignment: .leading, spacing: 24) {
+            HStack {
+                IconAction(icon: "arrow-left", label: "취소") { dismiss() }
+                Text(request.folder ? "새 폴더" : "새 노트").font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Button { do { try store.create(name: name, folder: request.folder, template: template); dismiss() } catch { self.error = error.localizedDescription } } label: {
+                    NativeIcon(name: "check", size: 19).frame(width: 44, height: 44)
+                }.buttonStyle(InkPressStyle()).accessibilityLabel("만들기").disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            TextField("이름", text: $name).font(.system(size: 16)).padding(14).background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 6)).accessibilityLabel("이름")
+            if !request.folder {
+                HStack(spacing: 12) {
+                    paper(.plain, "무지"); paper(.ruled, "줄노트"); paper(.grid, "모눈"); paper(.yellowRuled, "노란 줄노트")
                 }
-        }.presentationDetents([.medium])
+            }
+            if !error.isEmpty { Text(error).foregroundStyle(Color(uiColor: InkTheme.danger)).font(.system(size: 13)) }
+            Spacer(minLength: 0)
+        }.padding(20).background(Color(uiColor: InkTheme.panel)).foregroundStyle(ink).tint(accent)
+            .preferredColorScheme(.dark).presentationDetents([.medium]).presentationDragIndicator(.hidden).presentationCornerRadius(12)
     }
+    private func paper(_ value: PaperTemplate, _ label: String) -> some View {
+        Button { template = value } label: {
+            VStack(spacing: 10) {
+                Image(uiImage: PaperThumbnails.images[value] ?? UIImage())
+                    .resizable().scaledToFit().frame(height: 100).padding(5)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(template == value ? accent : .clear, lineWidth: 2))
+                Text(label).font(.system(size: 11)).foregroundStyle(template == value ? accent : ink)
+            }.frame(maxWidth: .infinity)
+        }.buttonStyle(InkPressStyle()).accessibilityLabel(label).accessibilityAddTraits(template == value ? .isSelected : [])
+    }
+}
+
+struct InkPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(reduceMotion ? 1 : configuration.isPressed ? 0.95 : 1)
+            .opacity(configuration.isPressed ? 0.75 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: configuration.isPressed ? 0.08 : 0.14), value: configuration.isPressed)
+    }
+}
+
+@MainActor private enum PaperThumbnails {
+    static let images: [PaperTemplate: UIImage] = Dictionary(uniqueKeysWithValues: PaperTemplate.allCases.compactMap { template in
+        guard let page = PDFDocument(data: PDFModel.blank(template: template))?.page(at: 0) else { return nil }
+        return (template, page.thumbnail(of: CGSize(width: 100, height: 130), for: .mediaBox))
+    })
 }

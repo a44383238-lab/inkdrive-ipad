@@ -21,6 +21,7 @@ final class PencilCanvas: PKCanvasView {
         super.init(frame: .zero)
         isOpaque = false; backgroundColor = .clear
         canvas.drawing = record.drawing; canvas.delegate = self; canvas.backgroundColor = .clear; canvas.isOpaque = false
+        canvas.overrideUserInterfaceStyle = .light
         canvas.drawingPolicy = .pencilOnly; canvas.isScrollEnabled = false
         canvas.drawingGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         canvas.drawingGestureRecognizer.isEnabled = true
@@ -37,13 +38,14 @@ final class PencilCanvas: PKCanvasView {
         let tool = editor.tool
         canvas.tool = editor.settings.nativeTool(tool)
         let customMarker = tool == .marker && editor.settings.markerStraight
-        let customEraser = tool == .eraser && editor.settings.eraserTarget != "all"
+        let customEraser = tool == .eraser
         let native = [.pen, .pencil, .marker, .eraser].contains(tool) && !customMarker && !customEraser
         canvas.isUserInteractionEnabled = native
         interaction.isUserInteractionEnabled = !native
         if tool != .lasso { interaction.clearSelection() }
     }
     func refresh() {
+        guard !toolActive else { return }
         let data = record.drawing.dataRepresentation()
         guard data != lastCommit else { return }
         synchronizing = true; canvas.drawing = record.drawing; lastCommit = data; synchronizing = false
@@ -51,25 +53,25 @@ final class PencilCanvas: PKCanvasView {
     }
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         guard !synchronizing else { return }
-        // Estimated pressure updates can arrive after DidEndUsingTool. Every callback persists.
-        beginGroup(); commitDrawing()
-        if !toolActive { scheduleGroupEnd() }
+        // Keep serialization, undo snapshots and PDF invalidation off the live stroke path.
+        guard !toolActive else { return }
+        beginGroup(); commitDrawing(); scheduleGroupEnd()
     }
     func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
-        toolActive = true; closeGroupWork?.cancel(); beginGroup()
+        endGroup(); toolActive = true; editor?.session.beginInkInput(record.id); beginGroup()
     }
     func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
-        toolActive = false; commitDrawing(); scheduleGroupEnd()
+        toolActive = false; editor?.session.endInkInput(record.id); commitDrawing(); scheduleGroupEnd()
         if editor?.tool == .eraser, editor?.settings.returnToPen == true { editor?.setTool(.pen) }
     }
     func commit() {
-        commitDrawing(); endGroup()
+        toolActive = false; editor?.session.endInkInput(record.id); commitDrawing(); endGroup()
     }
     private func commitDrawing() {
         let data = canvas.drawing.dataRepresentation()
         guard data != lastCommit else { return }
         lastCommit = data
-        editor?.session.changeDrawing(pageID: record.id, to: canvas.drawing)
+        editor?.session.changeDrawing(pageID: record.id, to: canvas.drawing, alreadyCompared: true)
     }
     private func beginGroup() {
         guard !openedGroup, let history = editor?.session.history else { return }

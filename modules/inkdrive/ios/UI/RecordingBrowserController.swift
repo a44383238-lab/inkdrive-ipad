@@ -50,7 +50,7 @@ enum RecordingCatalog {
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); title = "녹음"
+        super.viewDidLoad(); InkTheme.navigation(self); InkTheme.table(tableView); title = "녹음"
         view.backgroundColor = UIColor(white: 0.14, alpha: 1); overrideUserInterfaceStyle = .dark; view.tintColor = UIColor(hex: "#E8C65A")
         navigationItem.leftBarButtonItem = UIBarButtonItem(image: InkIcons.image("arrow-left"), style: .plain, target: self, action: #selector(close))
         navigationItem.leftBarButtonItem?.accessibilityLabel = "필기로"
@@ -122,7 +122,7 @@ enum RecordingCatalog {
     @objc private func forward() { jump((player?.currentTime().seconds ?? 0) + 10) }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let row = rows[indexPath.row], cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+        let row = rows[indexPath.row], cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil); cell.backgroundColor = InkTheme.row
         cell.textLabel?.text = row.title
         cell.detailTextLabel?.text = durations[row.path].map(Self.timestamp) ?? "—:—"
         cell.imageView?.image = InkIcons.image("play"); cell.tintColor = UIColor(hex: "#E8C65A")
@@ -178,7 +178,7 @@ enum RecordingCatalog {
         }
     }
     private func show(_ error: Error) {
-        let alert = UIAlertController(title: "녹음", message: error.localizedDescription, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "확인", style: .cancel)); present(alert, animated: true)
+        let alert = InkPanelController(title: "녹음", message: error.localizedDescription, preferredStyle: .alert)
+        alert.addAction(InkPanelAction(title: "확인", style: .cancel)); present(alert, animated: true)
     }
 }

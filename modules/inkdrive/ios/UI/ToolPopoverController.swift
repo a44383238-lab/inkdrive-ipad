@@ -5,6 +5,7 @@ import UIKit
     private var settings: ToolSettings
     private let changed: (ToolSettings) -> Void
     var removeTool: (() -> Void)?
+    var duplicateTool: (() -> Void)?
     var advanced: (() -> Void)?
     var toolSelected: ((EditorTool) -> Void)?
     init(tool: EditorTool, settings: ToolSettings, changed: @escaping (ToolSettings) -> Void) {
@@ -36,7 +37,7 @@ import UIKit
             stack.addArrangedSubview(nibs)
             let paletteTitle = UILabel(); paletteTitle.text = "기본 색상"; paletteTitle.font = .systemFont(ofSize: 11); paletteTitle.textColor = .secondaryLabel; stack.addArrangedSubview(paletteTitle)
             let swatches = UIStackView(); swatches.distribution = .fillEqually; swatches.spacing = 0
-            for hex in ["#E60012", "#F17B00", "#F3C800", "#63D538", "#33CBAA", "#22BDED", "#2455D6", "#6229D5", "#B308E0", "#747474", "#FFFFFF", "#111111"] {
+            for hex in ["#E60012", "#F17B00", "#F3C800", "#63D538", "#33CBAA", "#22BDED", "#2455D6", "#6229D5", "#B308E0", "#747474", "#FFFFFF", "#000000"] {
                 let dot = UIButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.layer.cornerRadius = 0
                 dot.heightAnchor.constraint(equalToConstant: 24).isActive = true
                 dot.accessibilityLabel = "색상 " + hex
@@ -44,13 +45,18 @@ import UIKit
                 swatches.addArrangedSubview(dot)
             }
             stack.addArrangedSubview(swatches)
-            let well = UIColorWell(); well.selectedColor = settings.uiColor; well.supportsAlpha = false; well.accessibilityLabel = "다른 색상"
-            well.widthAnchor.constraint(equalToConstant: 44).isActive = true
-            well.heightAnchor.constraint(equalToConstant: 44).isActive = true
-            well.addAction(UIAction { [weak self, weak well] _ in guard let self, let color = well?.selectedColor else { return }; self.settings.color = color.hexString; self.publish() }, for: .valueChanged)
-            // A small color well sits beside the width controls, instead of a permanent toolbar row.
+            let colorCode = UITextField(); colorCode.text = settings.color
+            colorCode.font = .monospacedSystemFont(ofSize: 12, weight: .medium); colorCode.textColor = InkTheme.text
+            colorCode.backgroundColor = InkTheme.canvas; colorCode.layer.cornerRadius = 5
+            colorCode.autocorrectionType = .no; colorCode.autocapitalizationType = .allCharacters
+            colorCode.accessibilityLabel = "색상 코드"; colorCode.widthAnchor.constraint(equalToConstant: 82).isActive = true
+            colorCode.addAction(UIAction { [weak self, weak colorCode] _ in
+                guard let code = colorCode?.text?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+                      code.range(of: "^#[0-9A-F]{6}$", options: .regularExpression) != nil else { return }
+                self?.settings.color = code; self?.publish()
+            }, for: .editingChanged)
             let row = UIStackView(); row.alignment = .center; row.spacing = 8
-            row.addArrangedSubview(well); row.addArrangedSubview(slider(value: settings.width, min: 0.1, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
+            row.addArrangedSubview(colorCode); row.addArrangedSubview(slider(value: settings.width, min: 0.1, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
             stack.addArrangedSubview(row)
             stack.addArrangedSubview(slider(value: settings.opacity * 100, min: 5, max: 100, unit: "%") { [weak self] in self?.settings.opacity = $0 / 100; self?.publish() })
             let recentTitle = UILabel(); recentTitle.text = "최근 색상"; recentTitle.font = .systemFont(ofSize: 11); recentTitle.textColor = .secondaryLabel; stack.addArrangedSubview(recentTitle)
@@ -67,11 +73,11 @@ import UIKit
         }
         if tool == .marker { stack.addArrangedSubview(toggle("직선 형광펜", settings.markerStraight) { [weak self] in self?.settings.markerStraight = $0; self?.publish() }) }
         let saved = UIButton(type: .system); saved.setTitle("+  즐겨찾기", for: .normal); saved.titleLabel?.font = .systemFont(ofSize: 12); saved.layer.borderWidth = 0.5; saved.layer.borderColor = UIColor(hex: "#E8C65A").cgColor; saved.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        saved.setTitle("+  도구 복제", for: .normal)
         saved.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            var values = UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []
-            if let value = try? JSONEncoder().encode(ToolPreset(tool: self.tool, settings: self.settings)) { values.append(value); UserDefaults.standard.set(Array(values.suffix(12)), forKey: "inkdrive.tool-presets.v2") }
-            self.changed(self.settings)
+            let action = self.duplicateTool
+            self.dismiss(animated: true, completion: action)
         }, for: .touchUpInside); stack.addArrangedSubview(saved)
         let more = InkIcons.button("sliders-horizontal", label: "추가 도구 설정")
         more.addAction(UIAction { [weak self] _ in guard let self else { return }; let action = self.advanced; self.dismiss(animated: true, completion: action) }, for: .touchUpInside)

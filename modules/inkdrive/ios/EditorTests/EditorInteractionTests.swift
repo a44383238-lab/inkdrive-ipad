@@ -20,9 +20,10 @@ import PencilKit
         XCTAssertEqual(editor.pdfView.displayMode, .singlePageContinuous)
         XCTAssertEqual(editor.pdfView.displayDirection, .vertical)
     }
-    func testInitialPaperFitsAndManualZoomSurvivesLayout() throws {
+    func testPaperCannotZoomOutBelowFitAndZoomInSurvivesLayout() throws {
         let editor = try editor()
         let fit = editor.pdfView.scaleFactor
+        XCTAssertEqual(editor.pdfView.minScaleFactor, fit, accuracy: 0.01)
         XCTAssertLessThanOrEqual(editor.pdfView.scaleFactor * 842, editor.pdfView.bounds.height + 1)
         let chosen = fit * 1.4; editor.pdfView.scaleFactor = chosen
         editor.view.setNeedsLayout(); editor.view.layoutIfNeeded()
@@ -36,6 +37,20 @@ import PencilKit
         XCTAssertTrue(overlay.canvas.drawingGestureRecognizer.isEnabled)
         XCTAssertEqual(overlay.canvas.drawingPolicy, .pencilOnly)
         XCTAssertNotNil(overlay.canvas.hitTest(CGPoint(x: 30, y: 30), with: nil))
+    }
+    func testSinglePageTurnsLeftAndRightWithoutLeavingPageBounds() throws {
+        let editor = try editor()
+        try editor.session.insertPage(at: 1, template: .ruled)
+        editor.pdfView.displayMode = .singlePage
+        editor.turnPage(forward: true)
+        XCTAssertTrue(editor.pdfView.currentPage === editor.session.model.pdf.page(at: 1))
+        editor.turnPage(forward: true)
+        XCTAssertTrue(editor.pdfView.currentPage === editor.session.model.pdf.page(at: 1))
+        editor.turnPage(forward: false)
+        XCTAssertTrue(editor.pdfView.currentPage === editor.session.model.pdf.page(at: 0))
+        editor.pdfView.displayMode = .singlePageContinuous
+        editor.turnPage(forward: true)
+        XCTAssertTrue(editor.pdfView.currentPage === editor.session.model.pdf.page(at: 0))
     }
     func testOnlyRequestedToolsRemainAvailable() {
         XCTAssertEqual(Set(EditorTool.allCases.map(\.rawValue)), Set(["pen", "pencil", "marker", "eraser", "lasso", "text"]))

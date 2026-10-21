@@ -37,8 +37,8 @@ struct EditorHost: UIViewControllerRepresentable {
                 }
                 present(editor, animated: false)
             } catch {
-                let alert = UIAlertController(title: "문서", message: error.localizedDescription, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "서재", style: .cancel) { _ in self.store.document = nil }); present(alert, animated: true)
+                let alert = InkPanelController(title: "문서", message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(InkPanelAction(title: "서재", style: .cancel) { _ in self.store.document = nil }); present(alert, animated: true)
             }
         }
     }

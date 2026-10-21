@@ -22,7 +22,7 @@ enum EditorTool: String, CaseIterable, Codable {
 }
 struct ToolPreset: Codable { let tool: EditorTool; let settings: ToolSettings }
 struct ToolSettings: Codable {
-    var color = "#2455D6"
+    var color = "#000000"
     var width: Double = 3
     var opacity: Double = 1
     var eraserWidth: Double = 20
@@ -50,7 +50,7 @@ struct ToolSettings: Codable {
         if tool == .eraser {
             return partialEraser ? PKEraserTool(.bitmap, width: eraserWidth) : PKEraserTool(.vector)
         }
-        let type: PKInk.InkType = tool == .pencil ? .pencil : tool == .marker ? .marker : .pen
+        let type: PKInk.InkType = tool == .pencil ? .pencil : tool == .marker ? .marker : .monoline
         return PKInkingTool(type, color: uiColor, width: width)
     }
 }

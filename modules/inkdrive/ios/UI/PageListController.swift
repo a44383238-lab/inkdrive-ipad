@@ -15,7 +15,7 @@ import PDFKit
     init(editor: EditorViewController) { self.editor = editor; super.init(style: .insetGrouped) }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); title = "페이지"
+        super.viewDidLoad(); InkTheme.navigation(self); InkTheme.table(tableView); title = "페이지"
         navigationItem.leftBarButtonItem = UIBarButtonItem(image: InkIcons.image("arrow-left"), style: .plain, target: self, action: #selector(done))
         navigationItem.leftBarButtonItem?.accessibilityLabel = "필기로"
         let plus = UIBarButtonItem(image: InkIcons.image("plus"), style: .plain, target: self, action: #selector(add)); plus.accessibilityLabel = "페이지 추가"
@@ -56,10 +56,10 @@ import PDFKit
         }
     }
     @objc private func jumpToPage() {
-        let alert = UIAlertController(title: "페이지 이동", message: "1–\(editor.session.model.pages.count)", preferredStyle: .alert)
+        let alert = InkPanelController(title: "페이지 이동", message: "1–\(editor.session.model.pages.count)", preferredStyle: .alert)
         alert.addTextField { $0.keyboardType = .numberPad; $0.placeholder = "페이지 번호" }
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-        alert.addAction(UIAlertAction(title: "이동", style: .default) { _ in
+        alert.addAction(InkPanelAction(title: "취소", style: .cancel))
+        alert.addAction(InkPanelAction(title: "이동", style: .default) { _ in
             guard let number = Int(alert.textFields?.first?.text ?? ""), self.editor.session.model.pages.indices.contains(number - 1) else { return }
             let page = self.editor.session.model.pages[number - 1].page
             self.dismiss(animated: true) { self.editor.pdfView.go(to: page) }
@@ -67,22 +67,22 @@ import PDFKit
     }
     @objc private func done() { dismiss(animated: true) }
     @objc private func add() {
-        let alert = UIAlertController(title: "새 페이지", message: "마지막에 추가해요.", preferredStyle: .actionSheet)
+        let alert = InkPanelController(title: "새 페이지", message: "마지막에 추가해요.", preferredStyle: .actionSheet)
         for template in PaperTemplate.allCases {
             let label = template == .plain ? "무지" : template == .ruled ? "줄노트" : template == .yellowRuled ? "노란 줄노트" : "모눈"
-            alert.addAction(UIAlertAction(title: label, style: .default) { _ in
+            alert.addAction(InkPanelAction(title: label, style: .default) { _ in
                 do { try self.editor.session.insertPage(at: self.editor.session.model.pages.count, template: template); self.tableView.reloadData() }
                 catch { self.editor.showError(error) }
             })
         }
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel)); alert.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
+        alert.addAction(InkPanelAction(title: "취소", style: .cancel)); alert.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItem
         present(alert, animated: true)
     }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch modes.selectedSegmentIndex { case 1: return outline.count; case 2: return bookmarkedPages.count; case 3: return found.count; default: return editor.session.model.pages.count }
     }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil); cell.backgroundColor = InkTheme.panel
         if modes.selectedSegmentIndex == 1 {
             let item = outline[indexPath.row]; cell.textLabel?.text = item.title; cell.textLabel?.numberOfLines = 2
             cell.detailTextLabel?.text = "\(editor.session.model.pdf.index(for: item.page) + 1) 페이지"; return cell
@@ -116,9 +116,9 @@ import PDFKit
     override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
         guard editingStyle == .delete else { return }
         let record = editor.session.model.pages[indexPath.row]
-        let alert = UIAlertController(title: "\(indexPath.row + 1) 페이지 삭제", message: "필기와 주석도 함께 삭제돼요. 실행 취소로 되돌릴 수 있어요.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-        alert.addAction(UIAlertAction(title: "삭제", style: .destructive) { _ in
+        let alert = InkPanelController(title: "\(indexPath.row + 1) 페이지 삭제", message: "필기와 주석도 함께 삭제돼요. 실행 취소로 되돌릴 수 있어요.", preferredStyle: .alert)
+        alert.addAction(InkPanelAction(title: "취소", style: .cancel))
+        alert.addAction(InkPanelAction(title: "삭제", style: .destructive) { _ in
             do { try self.editor.session.deletePage(id: record.id); self.tableView.reloadData() }
             catch { self.editor.showError(error) }
         }); present(alert, animated: true)

@@ -14,7 +14,7 @@ import PDFKit
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); overrideUserInterfaceStyle = .dark; view.backgroundColor = UIColor(white: 0.12, alpha: 1); view.tintColor = UIColor(hex: "#F4CA52")
+        super.viewDidLoad(); InkTheme.navigation(self); overrideUserInterfaceStyle = .dark; view.backgroundColor = UIColor(white: 0.12, alpha: 1); view.tintColor = UIColor(hex: "#F4CA52")
         title = editor.session.store.url.deletingPathExtension().lastPathComponent
         navigationItem.leftBarButtonItem = UIBarButtonItem(image: InkIcons.image("arrow-left"), style: .plain, target: self, action: #selector(done)); navigationItem.leftBarButtonItem?.accessibilityLabel = "필기로"
         navigationItem.rightBarButtonItem?.accessibilityLabel = "페이지 추가"
@@ -36,15 +36,15 @@ import PDFKit
         navigationController?.pushViewController(navigator, animated: true)
     }
     @objc private func add() {
-        let menu = UIAlertController(title: "페이지 추가", message: nil, preferredStyle: .actionSheet)
+        let menu = InkPanelController(title: "페이지 추가", message: nil, preferredStyle: .actionSheet)
         let index = editor.pdfView.currentPage.map { editor.session.model.pdf.index(for: $0) + 1 } ?? editor.session.model.pages.count
         for template in PaperTemplate.allCases {
-            menu.addAction(UIAlertAction(title: template == .plain ? "무지" : template == .ruled ? "줄노트" : template == .yellowRuled ? "노란 줄노트" : "모눈", style: .default) { _ in
+            menu.addAction(InkPanelAction(title: template == .plain ? "무지" : template == .ruled ? "줄노트" : template == .yellowRuled ? "노란 줄노트" : "모눈", style: .default) { _ in
                 do { self.editor.provider.commitAll(); try self.editor.session.insertPage(at: index, template: template); self.grid.reloadData() }
                 catch { self.editor.showError(error) }
             })
         }
-        menu.addAction(UIAlertAction(title: "취소", style: .cancel)); menu.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first; present(menu, animated: true)
+        menu.addAction(InkPanelAction(title: "취소", style: .cancel)); menu.popoverPresentationController?.barButtonItem = navigationItem.rightBarButtonItems?.first; present(menu, animated: true)
     }
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { editor.session.model.pages.count + 1 }
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
@@ -75,9 +75,9 @@ import PDFKit
                 guard let current = self.editor.session.model.pages.firstIndex(where: { $0.id == id }), current + 1 < self.editor.session.model.pages.count else { return }
                 do { self.editor.provider.commitAll(); try self.editor.session.movePage(from: current, to: current + 1); self.grid.reloadData() } catch { self.editor.showError(error) }
             }, UIAction(title: "삭제", image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
-                let confirm = UIAlertController(title: "페이지를 삭제할까요?", message: nil, preferredStyle: .alert)
-                confirm.addAction(UIAlertAction(title: "취소", style: .cancel))
-                confirm.addAction(UIAlertAction(title: "삭제", style: .destructive) { _ in
+                let confirm = InkPanelController(title: "페이지를 삭제할까요?", message: nil, preferredStyle: .alert)
+                confirm.addAction(InkPanelAction(title: "취소", style: .cancel))
+                confirm.addAction(InkPanelAction(title: "삭제", style: .destructive) { _ in
                     do { self.editor.provider.commitAll(); try self.editor.session.deletePage(id: id); self.grid.reloadData() } catch { self.editor.showError(error) }
                 }); self.present(confirm, animated: true)
             }])

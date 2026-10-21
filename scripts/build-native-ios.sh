@@ -5,11 +5,11 @@ mkdir -p build artifacts
   cd native
   xcodegen generate
 )
-xcodebuild -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug \
+xcodebuild -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Release \
   -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/NativeDerivedData \
   CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' DEVELOPMENT_TEAM='' \
   ONLY_ACTIVE_ARCH=NO ARCHS=arm64 build 2>&1 | tee build/native-app.log
-APP='build/NativeDerivedData/Build/Products/Debug-iphoneos/InkDrive.app'
+APP='build/NativeDerivedData/Build/Products/Release-iphoneos/InkDrive.app'
 test -d "$APP"
 test -f "$APP/InkDrive"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")" = 'app.inkdrive.notes'
@@ -23,5 +23,5 @@ ditto "$APP" build/NativePackage/Payload/InkDrive.app
 shasum -a 256 artifacts/InkDrive-Swift-development.ipa > artifacts/InkDrive-Swift-development.ipa.sha256
 python3 - <<'PY'
 import json,os,pathlib
-pathlib.Path('artifacts/build-info.json').write_text(json.dumps(dict(name='InkDrive',version='0.6.0',configuration='Debug',nativeSwift=True,developmentServerRequired=False,signed=False,installation='Sign and install with Sideloadly',commit=os.environ.get('GITHUB_SHA'),run=os.environ.get('GITHUB_RUN_ID')),indent=2))
+pathlib.Path('artifacts/build-info.json').write_text(json.dumps(dict(name='InkDrive',version='0.7.0',configuration='Release',nativeSwift=True,developmentServerRequired=False,signed=False,installation='Sign and install with Sideloadly',commit=os.environ.get('GITHUB_SHA'),run=os.environ.get('GITHUB_RUN_ID')),indent=2))
 PY

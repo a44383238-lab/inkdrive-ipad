@@ -12,12 +12,17 @@ import PDFKit
     private var resizeCorner: CGPoint?
     private var resizeAnchor: CGPoint?
     private let outline = CAShapeLayer()
+    private let eraserCircle = CAShapeLayer()
+    private var erasing = false
     private var endPoint: CGPoint = .zero
     override init(frame: CGRect) {
         super.init(frame: frame)
         isOpaque = false; backgroundColor = .clear
         outline.strokeColor = UIColor.systemBlue.cgColor; outline.fillColor = UIColor.clear.cgColor
         outline.lineDashPattern = [5, 4]; outline.lineWidth = 1.5; layer.addSublayer(outline)
+        eraserCircle.fillColor = UIColor(white: 0.15, alpha: 0.14).cgColor
+        eraserCircle.strokeColor = UIColor(white: 0.35, alpha: 0.65).cgColor
+        eraserCircle.lineWidth = 1; layer.addSublayer(eraserCircle)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     func clearSelection() { selected.removeAll(); selectionBounds = .null; outline.path = nil }
@@ -25,6 +30,10 @@ import PDFKit
         guard let touch = touches.first(where: { $0.type == .pencil }) else { return }
         let point = touch.location(in: self); points = [point]; endPoint = point
         resizeCorner = nil; resizeAnchor = nil
+        if let overlay, overlay.editor?.tool == .eraser {
+            erasing = true; overlay.canvasViewDidBeginUsingTool(overlay.canvas)
+            updateEraser(from: point, to: point); return
+        }
         if !selected.isEmpty, !selectionBounds.isNull, overlay?.editor?.tool == .lasso {
             let corners = [CGPoint(x: selectionBounds.minX, y: selectionBounds.minY), CGPoint(x: selectionBounds.maxX, y: selectionBounds.minY), CGPoint(x: selectionBounds.maxX, y: selectionBounds.maxY), CGPoint(x: selectionBounds.minX, y: selectionBounds.maxY)]
             if let corner = corners.first(where: { hypot(point.x - $0.x, point.y - $0.y) < 18 }) {
@@ -37,6 +46,7 @@ import PDFKit
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }), let first = points.first else { return }
+        if erasing { let next = touch.location(in: self); updateEraser(from: endPoint, to: next); endPoint = next; return }
         endPoint = touch.location(in: self); points.append(endPoint)
         if let anchor = resizeAnchor { drawBounds(CGRect(x: min(anchor.x, endPoint.x), y: min(anchor.y, endPoint.y), width: abs(endPoint.x - anchor.x), height: abs(endPoint.y - anchor.y))); return }
         let path = UIBezierPath()
@@ -47,10 +57,11 @@ import PDFKit
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard touches.contains(where: { $0.type == .pencil }) else { return }
-        points = []; resizeCorner = nil; resizeAnchor = nil; updateSelectionBounds()
+        finishErasing(); points = []; resizeCorner = nil; resizeAnchor = nil; updateSelectionBounds()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }), let overlay, let editor = overlay.editor, let first = points.first else { return }
+        if erasing { updateEraser(from: endPoint, to: touch.location(in: self)); finishErasing(); return }
         endPoint = touch.location(in: self)
         switch editor.tool {
         case .marker:
@@ -60,20 +71,7 @@ import PDFKit
             let stroke = PKStroke(ink: PKInk(.marker, color: editor.settings.uiColor), path: PKStrokePath(controlPoints: controls, creationDate: Date()))
             editor.session.changeDrawing(pageID: overlay.record.id, to: PKDrawing(strokes: overlay.record.drawing.strokes + [stroke]))
             outline.path = nil
-        case .eraser:
-            let target = editor.settings.eraserTarget
-            let radius = max(4, editor.settings.eraserWidth / 2)
-            let trace = points + [endPoint]
-            let strokes = overlay.record.drawing.strokes.filter { stroke in
-                let matches = target == "marker" ? stroke.ink.inkType == .marker : stroke.ink.inkType != .marker
-                guard matches else { return true }
-                return !stroke.path.contains { point in
-                    let transformed = point.location.applying(stroke.transform)
-                    return trace.contains { hypot($0.x - transformed.x, $0.y - transformed.y) <= radius }
-                }
-            }
-            editor.session.changeDrawing(pageID: overlay.record.id, to: PKDrawing(strokes: strokes)); outline.path = nil
-            if editor.settings.returnToPen { editor.setTool(.pen) }
+        case .eraser: break
         case .lasso:
             if let anchor = resizeAnchor, let corner = resizeCorner {
                 let x = abs(corner.x - anchor.x) > 0.1 ? (endPoint.x - anchor.x) / (corner.x - anchor.x) : 1
@@ -99,6 +97,19 @@ import PDFKit
         default: break
         }
         points = []; resizeCorner = nil; resizeAnchor = nil
+    }
+    private func updateEraser(from: CGPoint, to: CGPoint) {
+        guard let overlay, let editor = overlay.editor else { return }
+        let width = CGFloat(editor.settings.eraserWidth)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        eraserCircle.path = CGPath(ellipseIn: CGRect(x: to.x - width / 2, y: to.y - width / 2, width: width, height: width), transform: nil)
+        CATransaction.commit()
+        overlay.canvas.drawing = InkEraser.erase(overlay.canvas.drawing, from: from, to: to, width: width, partial: editor.settings.partialEraser, target: editor.settings.eraserTarget)
+    }
+    private func finishErasing() {
+        guard erasing, let overlay else { return }; erasing = false
+        eraserCircle.path = nil; points = []
+        overlay.canvasViewDidEndUsingTool(overlay.canvas); overlay.commit()
     }
     private func updateSelectionBounds() {
         guard let drawing = overlay?.record.drawing else { return }

@@ -15,6 +15,13 @@ import PencilKit
     private var commits: InkCommitStore?
     private(set) var blocked = false
     var didChange: (() -> Void)?
+    private(set) var changedDrawingPageID: UUID?
+    private var activeInkPages = Set<UUID>()
+    func beginInkInput(_ pageID: UUID) { activeInkPages.insert(pageID); delayedSave?.cancel() }
+    func endInkInput(_ pageID: UUID) {
+        let removed = activeInkPages.remove(pageID)
+        if removed != nil, activeInkPages.isEmpty, dirty { scheduleSave() }
+    }
     var statusChanged: ((String) -> Void)?
     var dirty: Bool { revision != savedRevision }
 
@@ -49,12 +56,13 @@ import PencilKit
         if recovered != nil { session.preservePageIdentities() }
         return session
     }
-    func changeDrawing(pageID: UUID, to new: PKDrawing) {
+    func changeDrawing(pageID: UUID, to new: PKDrawing, alreadyCompared: Bool = false) {
         guard let record = model.pages.first(where: { $0.id == pageID }) else { return }
         let old = record.drawing
-        guard old.dataRepresentation() != new.dataRepresentation() else { return }
+        guard alreadyCompared || old.dataRepresentation() != new.dataRepresentation() else { return }
         record.drawing = new
         undoable { $0.changeDrawing(pageID: pageID, to: old) }
+        changedDrawingPageID = pageID; defer { changedDrawingPageID = nil }
         changed()
     }
     func insertPage(at index: Int, template: PaperTemplate) throws {
@@ -111,9 +119,13 @@ import PencilKit
         revision += 1; didChange?()
         guard !blocked else { return }
         statusChanged?("저장 대기 중")
+        scheduleSave()
+    }
+    private func scheduleSave() {
         delayedSave?.cancel()
+        guard activeInkPages.isEmpty, !blocked else { return }
         delayedSave = Task { [weak self] in
-            do { try await Task.sleep(nanoseconds: 900_000_000) } catch { return }
+            do { try await Task.sleep(nanoseconds: 1_500_000_000) } catch { return }
             guard let self else { return }
             do { try await self.flush() } catch { self.statusChanged?(error.localizedDescription) }
         }
@@ -125,8 +137,10 @@ import PencilKit
         guard !blocked else { throw InkError.conflict }
         let task = Task { @MainActor in
             while self.dirty {
+                guard self.activeInkPages.isEmpty else { return }
                 let targetRevision = self.revision
-                let bytes = try self.model.snapshot()
+                let snapshot = try self.model.snapshotJob()
+                let bytes = try await Task.detached(priority: .utility) { try snapshot.render() }.value
                 try self.journal?.write(bytes, expected: self.digest)
                 self.statusChanged?("원본 저장 중…")
                 do {

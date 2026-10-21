@@ -32,7 +32,7 @@ enum VectorInkPainter {
             context.restoreGState()
         }
     }
-    private static func outline(_ points: [PKStrokePoint]) -> CGPath {
+    static func outline(_ points: [PKStrokePoint]) -> CGPath {
         let path = CGMutablePath()
         for p in points {
             path.addEllipse(in: CGRect(x: p.location.x - p.size.width / 2, y: p.location.y - p.size.height / 2, width: p.size.width, height: p.size.height))

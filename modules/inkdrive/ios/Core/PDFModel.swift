@@ -53,22 +53,10 @@ final class PDFModel {
         self.pdf = document; self.pages = records
     }
     func record(for page: PDFPage) -> NotebookPage? { pages.first { $0.page === page } }
-    func snapshot(includeInk: Bool = true) throws -> Data {
-        guard let base = pdf.dataRepresentation(), let copy = PDFDocument(data: base) else { throw InkError.serialization }
-        for (index, record) in pages.enumerated() {
-            guard let page = copy.page(at: index) else { throw InkError.serialization }
-            let identity = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
-            identity.userName = "InkDrive.PageID.v1"; identity.contents = record.id.uuidString
-            identity.shouldDisplay = false; identity.shouldPrint = false; page.addAnnotation(identity)
-            let documentIdentity = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
-            documentIdentity.userName = "InkDrive.DocumentID.v1"; documentIdentity.contents = documentID.uuidString
-            documentIdentity.shouldDisplay = false; documentIdentity.shouldPrint = false; page.addAnnotation(documentIdentity)
-            if includeInk && !record.drawing.strokes.isEmpty { page.addAnnotation(InkAnnotation(drawing: record.drawing, crop: page.bounds(for: .cropBox))) }
-        }
-        guard let bytes = copy.dataRepresentation(), let check = PDFDocument(data: bytes), check.pageCount == pages.count else {
-            throw InkError.serialization
-        }
-        return bytes
+    func snapshot(includeInk: Bool = true) throws -> Data { try snapshotJob(includeInk: includeInk).render() }
+    func snapshotJob(includeInk: Bool = true) throws -> PDFSnapshotJob {
+        guard let base = pdf.dataRepresentation() else { throw InkError.serialization }
+        return PDFSnapshotJob(base: base, documentID: documentID, records: pages.map { ($0.id, $0.drawing) }, includeInk: includeInk)
     }
     @discardableResult func insertBlank(at index: Int, template: PaperTemplate) throws -> NotebookPage {
         let data = Self.blank(template: template)
@@ -114,5 +102,30 @@ final class PDFModel {
                 context.move(to: CGPoint(x: 112, y: 36)); context.addLine(to: CGPoint(x: 112, y: 806)); context.strokePath()
             }
         }
+    }
+}
+
+// Only immutable Data/PKDrawing value snapshots cross queues. No live PDFKit object is shared.
+struct PDFSnapshotJob: @unchecked Sendable {
+    let base: Data
+    let documentID: UUID
+    let records: [(id: UUID, drawing: PKDrawing)]
+    let includeInk: Bool
+    func render() throws -> Data {
+        guard let copy = PDFDocument(data: base) else { throw InkError.serialization }
+        for (index, record) in records.enumerated() {
+            guard let page = copy.page(at: index) else { throw InkError.serialization }
+            let identity = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
+            identity.userName = "InkDrive.PageID.v1"; identity.contents = record.id.uuidString
+            identity.shouldDisplay = false; identity.shouldPrint = false; page.addAnnotation(identity)
+            let documentIdentity = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
+            documentIdentity.userName = "InkDrive.DocumentID.v1"; documentIdentity.contents = documentID.uuidString
+            documentIdentity.shouldDisplay = false; documentIdentity.shouldPrint = false; page.addAnnotation(documentIdentity)
+            if includeInk && !record.drawing.strokes.isEmpty { page.addAnnotation(InkAnnotation(drawing: record.drawing, crop: page.bounds(for: .cropBox))) }
+        }
+        guard let bytes = copy.dataRepresentation(), let check = PDFDocument(data: bytes), check.pageCount == records.count else {
+            throw InkError.serialization
+        }
+        return bytes
     }
 }

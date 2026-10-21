@@ -13,13 +13,15 @@ import AVFoundation
     private let tabs = UIStackView()
     private var switchingDocument = false
     private var needsInitialPageFit = true
+    private var fittedViewport = CGSize.zero
     private var savedPages: [String: Int] = [:]
     let pdfView = PDFView()
     let provider = OverlayProvider()
     private(set) var tool: EditorTool = .pen
     private var previousTool: EditorTool = .pen
     private var configurations: [String: ToolSettings] = [:]
-    var settings: ToolSettings { configurations[tool.rawValue] ?? ToolSettings() }
+    private var toolbar = ToolbarConfiguration(entries: [])
+    var settings: ToolSettings { toolbar.active.settings }
     private let floating = UIView()
     private let toolbarStack = UIStackView()
     private var toolbarVertical = UserDefaults.standard.bool(forKey: "inkdrive.toolbar-vertical")
@@ -43,7 +45,10 @@ import AVFoundation
     private let tools = UIStackView()
     private let status = UILabel()
     private let toolScroll = UIScrollView()
-    private var toolButtons: [EditorTool: UIButton] = [:]
+    private var toolButtons: [UUID: UIButton] = [:]
+    private var movingTool: UUID?
+    private var movingButton: UIButton?
+    private var lastToolMove: CFTimeInterval = 0
     private var observerTokens: [NSObjectProtocol] = []
     private var closing = false
     private let recordingLabel = UILabel()
@@ -61,7 +66,7 @@ import AVFoundation
         if let bytes = UserDefaults.standard.data(forKey: "inkdrive.tools.v1"),
            let decoded = try? JSONDecoder().decode([String: ToolSettings].self, from: bytes) { configurations = decoded }
         if UserDefaults.standard.object(forKey: "inkdrive.tool-presets.v2") == nil {
-            let defaults: [(EditorTool, String, Double, Double)] = [(.pen, "#202020", 0.5, 1), (.pen, "#2455D6", 0.5, 1), (.pen, "#DB3249", 0.5, 1), (.marker, "#79E047", 15, 0.4)]
+            let defaults: [(EditorTool, String, Double, Double)] = [(.pen, "#000000", 0.5, 1), (.pen, "#2455D6", 0.5, 1), (.pen, "#DB3249", 0.5, 1), (.marker, "#79E047", 15, 0.4)]
             let presets = defaults.compactMap { type, color, width, opacity -> Data? in
                 var value = ToolSettings(); value.color = color; value.width = width; value.opacity = opacity
                 return try? JSONEncoder().encode(ToolPreset(tool: type, settings: value))
@@ -72,6 +77,18 @@ import AVFoundation
             var marker = ToolSettings(); marker.color = "#FFE247"; marker.width = 18; marker.opacity = 0.45
             configurations[EditorTool.marker.rawValue] = marker
         }
+        if let data = UserDefaults.standard.data(forKey: "inkdrive.toolbar.v3"),
+           let restored = try? JSONDecoder().decode(ToolbarConfiguration.self, from: data), !restored.entries.isEmpty {
+            toolbar = restored
+        } else {
+            let saved = (UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []).compactMap { try? JSONDecoder().decode(ToolPreset.self, from: $0) }
+            var entries = saved.map { ToolbarEntry(tool: $0.tool, settings: $0.settings) }
+            for choice in visibleTools where !entries.contains(where: { $0.tool == choice }) {
+                entries.append(ToolbarEntry(tool: choice, settings: configurations[choice.rawValue] ?? ToolSettings()))
+            }
+            toolbar = ToolbarConfiguration(entries: entries)
+        }
+        tool = toolbar.active.tool
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
@@ -81,7 +98,12 @@ import AVFoundation
         pdfView.pageOverlayViewProvider = provider
         pdfView.document = session.model.pdf
         pdfView.displayMode = (UserDefaults.standard.object(forKey: "inkdrive.continuous-pages") as? Bool ?? true) ? .singlePageContinuous : .singlePage
-        pdfView.displayDirection = .vertical
+        pdfView.displayDirection = pdfView.displayMode == .singlePage ? .horizontal : .vertical
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swipePage(_:)))
+            swipe.direction = direction; swipe.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
+            swipe.delegate = self; pdfView.addGestureRecognizer(swipe)
+        }
         pdfView.backgroundColor = UIColor(white: 0.12, alpha: 1)
         pdfView.displayBox = .cropBox; pdfView.autoScales = true; pdfView.pageShadowsEnabled = true
         pdfView.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(pdfView)
@@ -136,7 +158,11 @@ import AVFoundation
     }
     deinit { observerTokens.forEach(NotificationCenter.default.removeObserver); recordingTimer?.invalidate(); if let pageObserver { NotificationCenter.default.removeObserver(pageObserver) } }
     private func bindSession() {
-        session.didChange = { [weak self] in self?.refresh() }
+        session.didChange = { [weak self] in
+            guard let self else { return }
+            if let id = self.session.changedDrawingPageID { self.provider.overlays[id]?.refresh() }
+            else { self.refresh() }
+        }
         session.statusChanged = { [weak self] value in self?.status.accessibilityValue = value }
     }
     private func rebuildTabs() {
@@ -213,13 +239,13 @@ import AVFoundation
                     try await recordingAction()
                 }
             } catch {
-                let alert = UIAlertController(title: "녹음", message: error.localizedDescription, preferredStyle: .alert)
+                let alert = InkPanelController(title: "녹음", message: error.localizedDescription, preferredStyle: .alert)
                 if AVAudioSession.sharedInstance().recordPermission == .denied {
-                    alert.addAction(UIAlertAction(title: "설정", style: .default) { _ in
+                    alert.addAction(InkPanelAction(title: "설정", style: .default) { _ in
                         if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                     })
                 }
-                alert.addAction(UIAlertAction(title: "확인", style: .cancel))
+                alert.addAction(InkPanelAction(title: "확인", style: .cancel))
                 present(alert, animated: true)
             }
         }
@@ -315,24 +341,13 @@ import AVFoundation
     }
     @objc private func endScrub() { pagePreview.isHidden = true }
     @objc private func displaySettings() {
-        let panel = UITableViewController(style: .insetGrouped)
-        panel.preferredContentSize = CGSize(width: 310, height: 320)
-        panel.modalPresentationStyle = .popover; panel.overrideUserInterfaceStyle = .dark
-        let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 8; stack.frame = CGRect(x: 16, y: 16, width: 278, height: 280)
-        let title = UILabel(); title.text = "보기 설정"; title.font = .systemFont(ofSize: 15, weight: .medium); title.textAlignment = .center; stack.addArrangedSubview(title)
-        for (label, action) in [
-            ("한 페이지씩", { self.provider.commitAll(); self.pdfView.displayMode = .singlePage; UserDefaults.standard.set(false, forKey: "inkdrive.continuous-pages") }),
-            ("연속 페이지", { self.provider.commitAll(); self.pdfView.displayMode = .singlePageContinuous; UserDefaults.standard.set(true, forKey: "inkdrive.continuous-pages") }),
+        menu("보기", actions: [
+            ("한 페이지씩", { self.provider.commitAll(); self.pdfView.displayMode = .singlePage; self.pdfView.displayDirection = .horizontal; self.needsInitialPageFit = true; self.view.setNeedsLayout(); UserDefaults.standard.set(false, forKey: "inkdrive.continuous-pages") }),
+            ("연속 페이지", { self.provider.commitAll(); self.pdfView.displayMode = .singlePageContinuous; self.pdfView.displayDirection = .vertical; self.needsInitialPageFit = true; self.view.setNeedsLayout(); UserDefaults.standard.set(true, forKey: "inkdrive.continuous-pages") }),
             ("화면에 맞추기", { self.needsInitialPageFit = true; self.view.setNeedsLayout() }),
             ("도구막대 가로·세로", { self.rotateToolbar() }),
             ("저장", { self.saveNow() })
-        ] as [(String, () -> Void)] {
-            let button = UIButton(type: .system); button.setTitle(label, for: .normal); button.contentHorizontalAlignment = .leading; button.titleLabel?.font = .systemFont(ofSize: 13); button.heightAnchor.constraint(equalToConstant: 40).isActive = true
-            button.addAction(UIAction { _ in action() }, for: .touchUpInside); stack.addArrangedSubview(button)
-        }
-        panel.view.addSubview(stack)
-        panel.popoverPresentationController?.sourceView = view; panel.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.width - 66, y: view.safeAreaInsets.top + 34, width: 32, height: 1); panel.popoverPresentationController?.delegate = self
-        present(panel, animated: true)
+        ])
     }
     private func buildToolbar() {
         floating.accessibilityIdentifier = "ink-toolbar"
@@ -363,48 +378,87 @@ import AVFoundation
         stack.addArrangedSubview(toolScroll)
         stack.addArrangedSubview(iconButton("undo-2", label: "실행 취소", action: #selector(undoAction)))
         stack.addArrangedSubview(iconButton("redo-2", label: "다시 실행", action: #selector(redoAction)))
-        stack.addArrangedSubview(iconButton("plus", label: "도구 추가·빼기", action: #selector(manageTools)))
+        stack.addArrangedSubview(iconButton("plus", label: "도구 추가", action: #selector(manageTools)))
         stack.addArrangedSubview(iconButton("rotate-cw", label: "도구막대 방향 전환", action: #selector(rotateToolbar)))
         updateToolbarAxis()
-        rebuildTools(); setTool(visibleTools.first ?? .pen)
+        rebuildTools(); setTool(toolbar.active.tool)
     }
     private func rebuildTools() {
         tools.arrangedSubviews.forEach { tools.removeArrangedSubview($0); $0.removeFromSuperview() }
         toolButtons.removeAll()
-        let presets = (UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []).compactMap { try? JSONDecoder().decode(ToolPreset.self, from: $0) }
-        for (index, preset) in presets.enumerated() {
-            let item = InkIcons.button(preset.tool.icon, label: "즐겨찾기 \(index + 1), \(preset.settings.width) px", compact: true)
-            item.setImage(PenNibArtwork.image(tool: preset.tool, color: preset.settings.uiColor.withAlphaComponent(1), width: preset.settings.width), for: .normal)
-            item.tintColor = preset.settings.uiColor.withAlphaComponent(1)
-            item.backgroundColor = preset.settings.uiColor.withAlphaComponent(0.08)
-            item.addAction(UIAction { [weak self] _ in
-                guard let self else { return }; self.configurations[preset.tool.rawValue] = preset.settings
-                UserDefaults.standard.set(try? JSONEncoder().encode(self.configurations), forKey: "inkdrive.tools.v1"); self.setTool(preset.tool)
-            }, for: .touchUpInside)
-            item.menu = UIMenu(children: [UIAction(title: "즐겨찾기 삭제", attributes: .destructive) { [weak self] _ in
-                var saved = UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []
-                guard saved.indices.contains(index) else { return }; saved.remove(at: index); UserDefaults.standard.set(saved, forKey: "inkdrive.tool-presets.v2"); self?.rebuildTools()
-            }]); tools.addArrangedSubview(item)
-        }
-        for choice in visibleTools {
-            let item = InkIcons.button(choice.icon, label: choice.label, compact: true)
+        var labeled = Set<EditorTool>()
+        for entry in toolbar.entries {
+            let label = labeled.insert(entry.tool).inserted ? entry.tool.label : entry.tool.label + " " + entry.settings.color + " " + String(format: "%.1f px", entry.settings.width)
+            let item = InkIcons.button(entry.tool.icon, label: label, compact: true)
+            item.accessibilityIdentifier = "toolbar-item-" + entry.id.uuidString
             item.addAction(UIAction { [weak self, weak item] _ in
-                guard let self, let item else { return }
-                if self.tool == choice { self.showToolPopover(from: item) } else { self.setTool(choice) }
+                guard let self, let item, self.movingTool == nil else { return }
+                if self.toolbar.selected == entry.id { self.showToolPopover(from: item) }
+                else { self.selectEntry(entry.id) }
             }, for: .touchUpInside)
-            toolButtons[choice] = item; tools.addArrangedSubview(item)
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(reorderTool(_:)))
+            hold.minimumPressDuration = 0.35; hold.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue), NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+            item.addGestureRecognizer(hold)
+            toolButtons[entry.id] = item; tools.addArrangedSubview(item)
         }
         updateToolAppearance(); view.setNeedsLayout()
     }
     private func updateToolAppearance() {
-        toolButtons.forEach { choice, item in
-            let color = (configurations[choice.rawValue] ?? ToolSettings()).uiColor.withAlphaComponent(1)
-            item.setImage(PenNibArtwork.image(tool: choice, color: color, width: (configurations[choice.rawValue] ?? ToolSettings()).width), for: .normal)
+        for entry in toolbar.entries {
+            guard let item = toolButtons[entry.id] else { continue }
+            let color = entry.settings.uiColor.withAlphaComponent(1)
+            item.setImage(PenNibArtwork.image(tool: entry.tool, color: color, width: entry.settings.width), for: .normal)
             item.tintColor = .white
-            item.backgroundColor = choice == tool ? UIColor(white: 0.20, alpha: 1) : .clear
-            item.layer.borderWidth = choice == tool ? 1 : 0
-            item.layer.borderColor = color.withAlphaComponent(0.25).cgColor
-            item.accessibilityValue = choice == tool ? "선택됨, 다시 누르면 설정" : nil
+            let selected = entry.id == toolbar.selected
+            item.backgroundColor = selected ? InkTheme.row : .clear
+            item.layer.borderWidth = selected ? 1 : 0
+            item.layer.borderColor = color.withAlphaComponent(0.35).cgColor
+            item.accessibilityValue = selected ? "선택됨, 다시 누르면 설정, 길게 눌러 순서 이동" : "길게 눌러 순서 이동"
+        }
+    }
+    private func persistToolbar() {
+        UserDefaults.standard.set(try? JSONEncoder().encode(toolbar), forKey: "inkdrive.toolbar.v3")
+    }
+    private func selectEntry(_ id: UUID) {
+        guard let entry = toolbar.entries.first(where: { $0.id == id }) else { return }
+        provider.commitAll(); if tool != .eraser { previousTool = tool }
+        toolbar.selected = id; tool = entry.tool; persistToolbar()
+        updateToolAppearance(); provider.applyTool()
+    }
+    @objc private func reorderTool(_ gesture: UILongPressGestureRecognizer) {
+        guard let button = gesture.view as? UIButton,
+              let id = toolButtons.first(where: { $0.value === button })?.key else { return }
+        switch gesture.state {
+        case .began:
+            movingTool = id; movingButton = button; toolScroll.isScrollEnabled = false
+            button.alpha = 0.6; button.transform = CGAffineTransform(scaleX: 1.13, y: 1.13)
+            UISelectionFeedbackGenerator().selectionChanged()
+        case .changed:
+            let point = gesture.location(in: tools)
+            // Scroll a long toolbar while holding near either viewport edge.
+            let local = gesture.location(in: toolScroll)
+            let edge: CGFloat = 28
+            if toolbarVertical {
+                let delta: CGFloat = local.y < toolScroll.bounds.minY + edge ? -8 : local.y > toolScroll.bounds.maxY - edge ? 8 : 0
+                toolScroll.contentOffset.y = min(max(0, toolScroll.contentOffset.y + delta), max(0, tools.bounds.height - toolScroll.bounds.height))
+            } else {
+                let delta: CGFloat = local.x < toolScroll.bounds.minX + edge ? -8 : local.x > toolScroll.bounds.maxX - edge ? 8 : 0
+                toolScroll.contentOffset.x = min(max(0, toolScroll.contentOffset.x + delta), max(0, tools.bounds.width - toolScroll.bounds.width))
+            }
+            guard CACurrentMediaTime() - lastToolMove > 0.1,
+                  let target = toolbar.entries.firstIndex(where: { entry in
+                      guard entry.id != id, let other = toolButtons[entry.id] else { return false }
+                      return other.frame.contains(point)
+                  }) else { return }
+            lastToolMove = CACurrentMediaTime(); toolbar.move(id, to: target)
+            tools.removeArrangedSubview(button); button.removeFromSuperview(); tools.insertArrangedSubview(button, at: target)
+            if UIAccessibility.isReduceMotionEnabled { tools.layoutIfNeeded() }
+            else { UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) { self.tools.layoutIfNeeded() } }
+            UISelectionFeedbackGenerator().selectionChanged()
+        case .ended, .cancelled, .failed:
+            button.alpha = 1; button.transform = .identity; movingTool = nil; movingButton = nil
+            toolScroll.isScrollEnabled = true; persistToolbar()
+        default: break
         }
     }
     override func viewDidLayoutSubviews() {
@@ -415,45 +469,68 @@ import AVFoundation
         let minimumY = view.safeAreaInsets.top + (openDocument == nil ? 40 : 68)
         floating.frame.origin.y = min(max(minimumY, floating.frame.origin.y), max(minimumY, view.bounds.height - floating.frame.height - view.safeAreaInsets.bottom))
         viewport.configure(pdfView)
-        if needsInitialPageFit, pdfView.bounds.width > 80, pdfView.bounds.height > 80,
+        if needsInitialPageFit || fittedViewport != pdfView.bounds.size, pdfView.bounds.width > 80, pdfView.bounds.height > 80,
            let page = pdfView.currentPage ?? session.model.pdf.page(at: 0) {
-            needsInitialPageFit = false
+            needsInitialPageFit = false; fittedViewport = pdfView.bounds.size
             let crop = page.bounds(for: .cropBox)
             let rotated = page.rotation % 180 != 0
             let width = rotated ? crop.height : crop.width, height = rotated ? crop.width : crop.height
             let fit = min((pdfView.bounds.width - 48) / width, (pdfView.bounds.height - 32) / height)
-            pdfView.autoScales = false; pdfView.minScaleFactor = fit * 0.4; pdfView.maxScaleFactor = max(6, fit * 6); pdfView.scaleFactor = fit
+            pdfView.autoScales = false; pdfView.minScaleFactor = fit; pdfView.maxScaleFactor = max(6, fit * 6); pdfView.scaleFactor = fit
             pdfView.go(to: page)
+        }
+    }
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer is UISwipeGestureRecognizer {
+            return pdfView.displayMode == .singlePage && pdfView.scaleFactor <= pdfView.minScaleFactor * 1.03
+        }
+        return true
+    }
+    @objc private func swipePage(_ gesture: UISwipeGestureRecognizer) {
+        turnPage(forward: gesture.direction == .left)
+    }
+    func turnPage(forward: Bool) {
+        guard pdfView.displayMode == .singlePage, let current = pdfView.currentPage else { return }
+        let index = session.model.pdf.index(for: current) + (forward ? 1 : -1)
+        guard let page = session.model.pdf.page(at: index) else { return }
+        provider.commitAll(); needsInitialPageFit = true
+        pdfView.go(to: page); view.setNeedsLayout(); view.layoutIfNeeded()
+        if !UIAccessibility.isReduceMotionEnabled {
+            pdfView.transform = CGAffineTransform(translationX: forward ? 18 : -18, y: 0)
+            UIView.animate(withDuration: 0.14, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) { self.pdfView.transform = .identity }
         }
     }
     private func iconButton(_ icon: String, label: String, action: Selector) -> UIButton {
         let item = InkIcons.button(icon, label: label, compact: true); item.addTarget(self, action: action, for: .touchUpInside); return item
     }
     func setTool(_ new: EditorTool) {
-        provider.commitAll()
-        if tool != .eraser { previousTool = tool }
-        tool = new
-        if !visibleTools.contains(new) { visibleTools.append(new); persistVisibleTools(); rebuildTools() }
-        updateToolAppearance(); provider.applyTool()
+        if toolbar.active.tool == new { selectEntry(toolbar.selected); return }
+        if let entry = toolbar.entries.first(where: { $0.tool == new }) { selectEntry(entry.id) }
+        else { addToolbarEntry(new, settings: configurations[new.rawValue] ?? ToolSettings()) }
+    }
+    private func addToolbarEntry(_ tool: EditorTool, settings: ToolSettings) {
+        provider.commitAll(); toolbar.add(tool, settings: settings); self.tool = tool
+        persistToolbar(); rebuildTools(); provider.applyTool()
     }
     private func updateSettings(_ change: (inout ToolSettings) -> Void) {
-        var value = settings; change(&value); configurations[tool.rawValue] = value
-        UserDefaults.standard.set(try? JSONEncoder().encode(configurations), forKey: "inkdrive.tools.v1")
-        updateToolAppearance(); provider.applyTool()
+        guard let index = toolbar.entries.firstIndex(where: { $0.id == toolbar.selected }) else { return }
+        change(&toolbar.entries[index].settings)
+        configurations[tool.rawValue] = toolbar.entries[index].settings
+        persistToolbar(); updateToolAppearance(); provider.applyTool()
     }
     private func showToolPopover(from anchor: UIView) {
         let choice = tool
         let popover = ToolPopoverController(tool: choice, settings: settings) { [weak self] value in
             guard let self else { return }
-            self.configurations[choice.rawValue] = value
-            UserDefaults.standard.set(try? JSONEncoder().encode(self.configurations), forKey: "inkdrive.tools.v1")
-            self.updateToolAppearance(); self.provider.applyTool()
+            guard self.tool == choice else { return }
+            self.updateSettings { $0 = value }
         }
         popover.toolSelected = { [weak self] next in
             guard let self else { return }; self.setTool(next)
-            if let button = self.toolButtons[next] { self.showToolPopover(from: button) }
+            if let button = self.toolButtons[self.toolbar.selected] { self.showToolPopover(from: button) }
         }
         popover.removeTool = { [weak self] in self?.hideTool(choice) }
+        popover.duplicateTool = { [weak self] in self?.savePreset() }
         popover.advanced = { [weak self] in self?.toolOptions() }
         popover.popoverPresentationController?.sourceView = anchor
         popover.popoverPresentationController?.sourceRect = anchor.bounds
@@ -462,38 +539,28 @@ import AVFoundation
     }
     func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) { rebuildTools() }
     func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle { .none }
-    private func persistVisibleTools() { UserDefaults.standard.set(visibleTools.map(\.rawValue), forKey: "inkdrive.visible-tools.v2") }
     private func hideTool(_ choice: EditorTool) {
-        guard visibleTools.count > 1 else { return }
-        visibleTools.removeAll { $0 == choice }; persistVisibleTools()
-        if tool == choice { tool = visibleTools[0] }
-        rebuildTools(); provider.applyTool()
+        guard toolbar.entries.count > 1 else { return }
+        provider.commitAll(); toolbar.remove(toolbar.selected); tool = toolbar.active.tool
+        persistToolbar(); rebuildTools(); provider.applyTool()
     }
     @objc private func manageTools() {
-        let controller = UIViewController(); controller.modalPresentationStyle = .popover
-        controller.preferredContentSize = CGSize(width: 252, height: 320); controller.view.backgroundColor = UIColor(white: 0.14, alpha: 1)
-        let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 6; stack.frame = CGRect(x: 16, y: 14, width: 220, height: 292); controller.view.addSubview(stack)
+        let controller = InkPanelController(title: "도구 추가", message: nil, preferredStyle: .actionSheet)
         for choice in EditorTool.allCases {
-            let item = UIButton(type: .system)
-            item.setImage(InkIcons.image(choice.icon), for: .normal)
-            item.setTitle("  " + choice.label, for: .normal); item.contentHorizontalAlignment = .leading
-            item.tintColor = UIColor(white: 0.88, alpha: 1); item.layer.cornerRadius = 10
-            item.backgroundColor = visibleTools.contains(choice) ? UIColor(white: 0.25, alpha: 1) : UIColor(white: 0.17, alpha: 1)
-            item.accessibilityValue = visibleTools.contains(choice) ? "추가됨" : "숨겨짐"
-            item.heightAnchor.constraint(equalToConstant: 44).isActive = true
-            item.addAction(UIAction { [weak self, weak item] _ in
+            controller.addAction(InkPanelAction(title: choice.label, style: .default) { [weak self] _ in
                 guard let self else { return }
-                if self.visibleTools.contains(choice) { self.hideTool(choice) }
-                else { self.visibleTools.append(choice); self.persistVisibleTools(); self.rebuildTools() }
-                item?.backgroundColor = self.visibleTools.contains(choice) ? UIColor(white: 0.25, alpha: 1) : UIColor(white: 0.17, alpha: 1)
-                item?.accessibilityValue = self.visibleTools.contains(choice) ? "추가됨" : "숨겨짐"
-            }, for: .touchUpInside)
-            stack.addArrangedSubview(item)
+                self.addToolbarEntry(choice, settings: self.settingsForNewTool(choice))
+                if let anchor = self.toolButtons[self.toolbar.selected] { self.showToolPopover(from: anchor) }
+            })
         }
+        controller.addAction(InkPanelAction(title: "취소", style: .cancel))
         controller.popoverPresentationController?.sourceView = floating
         controller.popoverPresentationController?.sourceRect = CGRect(x: floating.bounds.maxX - 50, y: 0, width: 44, height: 44)
-        controller.popoverPresentationController?.delegate = self
         present(controller, animated: true)
+    }
+    private func settingsForNewTool(_ choice: EditorTool) -> ToolSettings {
+        if choice == tool { return settings }
+        return toolbar.entries.first(where: { $0.tool == choice })?.settings ?? configurations[choice.rawValue] ?? ToolSettings()
     }
     @objc private func dragToolbar(_ gesture: UIPanGestureRecognizer) {
         let delta = gesture.translation(in: view); floating.center.x += delta.x; floating.center.y += delta.y
@@ -503,7 +570,7 @@ import AVFoundation
     func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
         switch UIPencilInteraction.preferredTapAction {
         case .ignore: break
-        case .showColorPalette: if let anchor = toolButtons[tool] { showToolPopover(from: anchor) }
+        case .showColorPalette: if let anchor = toolButtons[toolbar.selected] { showToolPopover(from: anchor) }
         case .switchPrevious: setTool(previousTool)
         default: setTool(tool == .eraser ? previousTool : .eraser)
         }
@@ -548,13 +615,13 @@ import AVFoundation
     func showError(_ error: Error) {
         status.text = error.localizedDescription
         guard presentedViewController == nil else { return }
-        let alert = UIAlertController(title: "작업을 완료하지 못했어요", message: error.localizedDescription, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "확인", style: .default)); present(alert, animated: true)
+        let alert = InkPanelController(title: "작업을 완료하지 못했어요", message: error.localizedDescription, preferredStyle: .alert)
+        alert.addAction(InkPanelAction(title: "확인", style: .default)); present(alert, animated: true)
     }
     func menu(_ title: String, actions: [(String, () -> Void)]) {
-        let sheet = UIAlertController(title: title, message: nil, preferredStyle: .actionSheet)
-        actions.forEach { name, action in sheet.addAction(UIAlertAction(title: name, style: .default) { _ in action() }) }
-        sheet.addAction(UIAlertAction(title: "취소", style: .cancel))
+        let sheet = InkPanelController(title: title, message: nil, preferredStyle: .actionSheet)
+        actions.forEach { name, action in sheet.addAction(InkPanelAction(title: name, style: .default) { _ in action() }) }
+        sheet.addAction(InkPanelAction(title: "취소", style: .cancel))
         sheet.popoverPresentationController?.sourceView = floating
         sheet.popoverPresentationController?.sourceRect = floating.bounds
         present(sheet, animated: true)
@@ -595,18 +662,11 @@ import AVFoundation
             ("오른쪽 정렬", { self.updateSettings { $0.alignment = NSTextAlignment.right.rawValue } })
         ])
     }
-    private func savePreset() {
-        var presets = UserDefaults.standard.array(forKey: "inkdrive.presets") as? [Data] ?? []
-        if let bytes = try? JSONEncoder().encode(settings) { presets.append(bytes) }
-        UserDefaults.standard.set(Array(presets.suffix(12)), forKey: "inkdrive.presets")
-        var typed = UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []
-        if let bytes = try? JSONEncoder().encode(ToolPreset(tool: tool, settings: settings)) { typed.append(bytes) }
-        UserDefaults.standard.set(Array(typed.suffix(8)), forKey: "inkdrive.tool-presets.v2"); rebuildTools()
-    }
+    private func savePreset() { addToolbarEntry(tool, settings: settings) }
     private func loadPreset() {
         let presets = (UserDefaults.standard.array(forKey: "inkdrive.presets") as? [Data] ?? []).compactMap { try? JSONDecoder().decode(ToolSettings.self, from: $0) }
         menu("즐겨찾기", actions: presets.enumerated().map { i, value in
-            ("\(i + 1) · \(value.color) · \(value.width) px", { self.configurations[self.tool.rawValue] = value; self.setTool(self.tool) })
+            ("\(i + 1) · \(value.color) · \(value.width) px", { self.updateSettings { $0 = value } })
         })
     }
     func selectionMenu(_ selection: StrokeInteractionView) {
@@ -639,7 +699,7 @@ import AVFoundation
     }
     private func editText(record: NotebookPage, point: CGPoint, existing: PDFAnnotation?) {
         if let existing, existing.type != PDFAnnotationSubtype.freeText.rawValue { return }
-        let alert = UIAlertController(title: "텍스트 상자", message: "Pencil로 드래그하면 위치를 옮길 수 있어요.", preferredStyle: .alert)
+        let alert = InkPanelController(title: "텍스트 상자", message: "Pencil로 드래그하면 위치를 옮길 수 있어요.", preferredStyle: .alert)
         let pointSize: CGFloat = existing?.font?.pointSize ?? CGFloat(settings.fontSize)
         let boxWidth: CGFloat = existing?.bounds.width ?? 240
         let boxHeight: CGFloat = existing?.bounds.height ?? 100
@@ -650,8 +710,8 @@ import AVFoundation
         for (placeholder, value) in textFields {
             alert.addTextField { $0.placeholder = placeholder; $0.text = value }
         }
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-        alert.addAction(UIAlertAction(title: "적용", style: .default) { _ in
+        alert.addAction(InkPanelAction(title: "취소", style: .cancel))
+        alert.addAction(InkPanelAction(title: "적용", style: .default) { _ in
             guard let fields = alert.textFields, let size = Double(fields[1].text ?? ""), (6...144).contains(size),
                   let width = Double(fields[2].text ?? ""), (20...2000).contains(width),
                   let height = Double(fields[3].text ?? ""), (20...2000).contains(height) else { self.showError(InkError.invalidName); return }
@@ -679,9 +739,9 @@ import AVFoundation
         ])
     }
     private func confirmReload() {
-        let alert = UIAlertController(title: "외부 버전을 다시 열까요?", message: "이 화면의 미저장 변경은 버려져요. 필요하면 먼저 복구 사본을 저장해 주세요.", preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "취소", style: .cancel))
-        alert.addAction(UIAlertAction(title: "미저장 변경 버리고 다시 열기", style: .destructive) { _ in
+        let alert = InkPanelController(title: "외부 버전을 다시 열까요?", message: "이 화면의 미저장 변경은 버려져요. 필요하면 먼저 복구 사본을 저장해 주세요.", preferredStyle: .alert)
+        alert.addAction(InkPanelAction(title: "취소", style: .cancel))
+        alert.addAction(InkPanelAction(title: "미저장 변경 버리고 다시 열기", style: .destructive) { _ in
             self.view.isUserInteractionEnabled = false
             Task {
                 defer { self.view.isUserInteractionEnabled = true }
