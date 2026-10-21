@@ -75,7 +75,8 @@ import UIKit
             field.accessibilityLabel = field.placeholder; stack.addArrangedSubview(field)
         }
         for (index, action) in actions.enumerated() {
-            let button = UIButton(type: .system); button.setTitle(action.title, for: .normal)
+            let button = InkColorButton(type: .system); button.setTitle(action.title, for: .normal)
+            button.accessibilityIdentifier = "panel-action-" + action.title
             button.accessibilityLabel = action.title; button.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
             button.contentHorizontalAlignment = .leading
             button.setTitleColor(action.style == .destructive ? InkTheme.danger : action.style == .cancel ? InkTheme.muted : InkTheme.text, for: .normal)

@@ -259,8 +259,15 @@ private struct DocumentThumbnail: View {
                 if let cached = Self.cache.object(forKey: key) { image = cached; return }
                 // Render only visible LazyVGrid cells; never hydrate every iCloud document at startup.
                 await Task.yield()
-                guard !Task.isCancelled, let snapshot = try? await CoordinatedStore(url: url, scope: scope).read(), !Task.isCancelled, let page = PDFDocument(data: snapshot.data)?.page(at: 0) else { return }
-                let preview = page.thumbnail(of: CGSize(width: 240, height: 296), for: .cropBox)
+                guard !Task.isCancelled, let snapshot = try? await CoordinatedStore(url: url, scope: scope).read(), !Task.isCancelled else { return }
+                let bytes = snapshot.data
+                let preview = await Task.detached(priority: .utility) { () -> UIImage? in
+                    guard let document = PDFDocument(data: bytes), let page = document.page(at: 0) else { return nil }
+                    let result = page.thumbnail(of: CGSize(width: 240, height: 296), for: .cropBox)
+                    withExtendedLifetime(document) {}
+                    return result
+                }.value
+                guard !Task.isCancelled, let preview else { return }
                 Self.cache.countLimit = 80; Self.cache.setObject(preview, forKey: key); image = preview
                 withExtendedLifetime(scope) {}
             }
@@ -276,18 +283,30 @@ private struct FolderDestinationView: View {
     @State private var folders: [LibraryEntry] = []
     private var allowed: Bool { !paths.contains { path == $0 || path.hasPrefix($0 + "/") } }
     var body: some View {
-        NavigationStack {
-            List {
-                if !path.isEmpty { Button { path = path.split(separator: "/").dropLast().joined(separator: "/"); refresh() } label: { Label("상위 폴더", systemImage: "chevron.left") } }
-                ForEach(folders) { entry in
-                    Button { path = entry.path; refresh() } label: { HStack { Image(systemName: "folder.fill").foregroundStyle(.purple); Text(entry.displayName); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) } }
-                }
-            }.navigationTitle(path.isEmpty ? store.rootName ?? "InkDrive" : LibraryEntry.folderTitle(URL(fileURLWithPath: path).lastPathComponent))
-                .navigationBarTitleDisplayMode(.inline).toolbar {
-                    ToolbarItem(placement: .topBarLeading) { Button("취소") { dismiss() } }
-                    ToolbarItem(placement: .topBarTrailing) { Button("여기로 이동") { move(path) }.disabled(!allowed) }
-                }
-        }.preferredColorScheme(.dark).presentationDetents([.large]).task { refresh() }
+        VStack(spacing: 0) {
+            HStack {
+                IconAction(icon: "arrow-left", label: "취소") { dismiss() }
+                Text(path.isEmpty ? store.rootName ?? "InkDrive" : LibraryEntry.folderTitle(URL(fileURLWithPath: path).lastPathComponent)).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Spacer()
+                Button("여기로 이동") { move(path) }.font(.system(size: 13, weight: .semibold)).buttonStyle(InkPressStyle()).disabled(!allowed).frame(height: 44)
+            }.padding(.horizontal, 16)
+            ScrollView {
+                VStack(spacing: 6) {
+                    if !path.isEmpty {
+                        Button { path = path.split(separator: "/").dropLast().joined(separator: "/"); refresh() } label: {
+                            HStack { NativeIcon(name: "arrow-left", size: 18); Text("상위 폴더"); Spacer() }.padding(14)
+                        }.buttonStyle(InkPressStyle())
+                    }
+                    ForEach(folders) { entry in
+                        Button { path = entry.path; refresh() } label: {
+                            HStack(spacing: 14) { FolderGlyph(color: Color(uiColor: UIColor(hex: store.folderColors[entry.path] ?? "#B7A3F7"))).frame(width: 36, height: 32); Text(entry.displayName); Spacer(); NativeIcon(name: "chevron-right", size: 16).foregroundStyle(.secondary) }
+                                .padding(14).background(Color(uiColor: InkTheme.row), in: RoundedRectangle(cornerRadius: 6))
+                        }.buttonStyle(InkPressStyle())
+                    }
+                }.font(.system(size: 13)).padding(16)
+            }
+        }.background(Color(uiColor: InkTheme.panel)).foregroundStyle(ink).tint(accent)
+            .preferredColorScheme(.dark).presentationDetents([.large]).presentationDragIndicator(.hidden).presentationCornerRadius(12).task { refresh() }
     }
     private func refresh() {
         do {
@@ -351,7 +370,9 @@ struct InkPressStyle: ButtonStyle {
 
 @MainActor private enum PaperThumbnails {
     static let images: [PaperTemplate: UIImage] = Dictionary(uniqueKeysWithValues: PaperTemplate.allCases.compactMap { template in
-        guard let page = PDFDocument(data: PDFModel.blank(template: template))?.page(at: 0) else { return nil }
-        return (template, page.thumbnail(of: CGSize(width: 100, height: 130), for: .mediaBox))
+        guard let document = PDFDocument(data: PDFModel.blank(template: template)), let page = document.page(at: 0) else { return nil }
+        let image = page.thumbnail(of: CGSize(width: 100, height: 130), for: .mediaBox)
+        withExtendedLifetime(document) {}
+        return (template, image)
     })
 }

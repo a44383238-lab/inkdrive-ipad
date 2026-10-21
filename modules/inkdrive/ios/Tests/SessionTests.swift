@@ -26,6 +26,25 @@ import PencilKit
 }
 
 @MainActor final class SessionTests: XCTestCase {
+    func testInkInputDefersAutomaticPDFSaveUntilPencilLift() async throws {
+        let (session, disk) = try make(), pageID = session.model.pages[0].id
+        session.beginInkInput(pageID)
+        try session.insertPage(at: 1, template: .ruled)
+        try await Task.sleep(nanoseconds: 1_700_000_000)
+        XCTAssertEqual(disk.writes, 0)
+        session.endInkInput(pageID)
+        try await session.flush()
+        XCTAssertEqual(disk.writes, 1)
+        XCTAssertFalse(session.dirty)
+    }
+    func testBackgroundSnapshotUsesFrozenPagesWhileEditingContinues() async throws {
+        let (session, _) = try make()
+        let snapshot = try session.model.snapshotJob()
+        try session.insertPage(at: 1, template: .grid)
+        let bytes = try await Task.detached { try snapshot.render() }.value
+        XCTAssertEqual(try PDFModel(data: bytes).pages.count, 1)
+        XCTAssertEqual(session.model.pages.count, 2)
+    }
     private func make() throws -> (EditorSession, ControlledStorage) {
         let bytes = PDFModel.blank(template: .plain), storage = ControlledStorage(PDFModel.blank(template: .plain))
         return (try EditorSession(model: PDFModel(data: bytes), store: storage, digest: "initial"), storage)

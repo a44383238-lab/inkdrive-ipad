@@ -14,11 +14,13 @@ import AVFoundation
     private var switchingDocument = false
     private var needsInitialPageFit = true
     private var fittedViewport = CGSize.zero
+    private var fittedPage: ObjectIdentifier?
     private var savedPages: [String: Int] = [:]
     let pdfView = PDFView()
     let provider = OverlayProvider()
     private(set) var tool: EditorTool = .pen
     private var previousTool: EditorTool = .pen
+    private var previousToolID: UUID?
     private var configurations: [String: ToolSettings] = [:]
     private var toolbar = ToolbarConfiguration(entries: [])
     var settings: ToolSettings { toolbar.active.settings }
@@ -322,7 +324,10 @@ import AVFoundation
             pageNumber.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18), pageNumber.bottomAnchor.constraint(equalTo: pageSlider.topAnchor, constant: -4), pageNumber.widthAnchor.constraint(equalToConstant: 78), pageNumber.heightAnchor.constraint(equalToConstant: 23),
             pagePreview.centerXAnchor.constraint(equalTo: pageSlider.centerXAnchor), pagePreview.bottomAnchor.constraint(equalTo: pageSlider.topAnchor, constant: -12), pagePreview.widthAnchor.constraint(equalToConstant: 100), pagePreview.heightAnchor.constraint(equalToConstant: 126)
         ])
-        pageObserver = NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: pdfView, queue: .main) { [weak self] _ in Task { @MainActor in self?.updatePageNumber() } }
+        pageObserver = NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: pdfView, queue: .main) { [weak self] _ in Task { @MainActor in
+            guard let self else { return }; self.updatePageNumber()
+            if let page = self.pdfView.currentPage, self.fittedPage != ObjectIdentifier(page) { self.needsInitialPageFit = true; self.view.setNeedsLayout() }
+        } }
         updatePageNumber()
     }
     private func updatePageNumber() {
@@ -421,7 +426,7 @@ import AVFoundation
     }
     private func selectEntry(_ id: UUID) {
         guard let entry = toolbar.entries.first(where: { $0.id == id }) else { return }
-        provider.commitAll(); if tool != .eraser { previousTool = tool }
+        provider.commitAll(); if tool != .eraser { previousTool = tool; previousToolID = toolbar.selected }
         toolbar.selected = id; tool = entry.tool; persistToolbar()
         updateToolAppearance(); provider.applyTool()
     }
@@ -451,7 +456,7 @@ import AVFoundation
                       return other.frame.contains(point)
                   }) else { return }
             lastToolMove = CACurrentMediaTime(); toolbar.move(id, to: target)
-            tools.removeArrangedSubview(button); button.removeFromSuperview(); tools.insertArrangedSubview(button, at: target)
+            tools.removeArrangedSubview(button); tools.insertArrangedSubview(button, at: target)
             if UIAccessibility.isReduceMotionEnabled { tools.layoutIfNeeded() }
             else { UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) { self.tools.layoutIfNeeded() } }
             UISelectionFeedbackGenerator().selectionChanged()
@@ -471,7 +476,7 @@ import AVFoundation
         viewport.configure(pdfView)
         if needsInitialPageFit || fittedViewport != pdfView.bounds.size, pdfView.bounds.width > 80, pdfView.bounds.height > 80,
            let page = pdfView.currentPage ?? session.model.pdf.page(at: 0) {
-            needsInitialPageFit = false; fittedViewport = pdfView.bounds.size
+            needsInitialPageFit = false; fittedViewport = pdfView.bounds.size; fittedPage = ObjectIdentifier(page)
             let crop = page.bounds(for: .cropBox)
             let rotated = page.rotation % 180 != 0
             let width = rotated ? crop.height : crop.width, height = rotated ? crop.width : crop.height
@@ -504,6 +509,7 @@ import AVFoundation
         let item = InkIcons.button(icon, label: label, compact: true); item.addTarget(self, action: action, for: .touchUpInside); return item
     }
     func setTool(_ new: EditorTool) {
+        if tool == .eraser, new == previousTool, let id = previousToolID, toolbar.entries.contains(where: { $0.id == id }) { selectEntry(id); return }
         if toolbar.active.tool == new { selectEntry(toolbar.selected); return }
         if let entry = toolbar.entries.first(where: { $0.tool == new }) { selectEntry(entry.id) }
         else { addToolbarEntry(new, settings: configurations[new.rawValue] ?? ToolSettings()) }

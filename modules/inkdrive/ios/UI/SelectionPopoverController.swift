@@ -9,7 +9,7 @@ import UIKit
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .white
+        super.viewDidLoad(); view.backgroundColor = InkTheme.panel; overrideUserInterfaceStyle = .dark; view.tintColor = InkTheme.accent
         let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 8; stack.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12), stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12), stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 10)])
         let colors = UIStackView(); colors.distribution = .equalSpacing; colors.alignment = .center
@@ -18,7 +18,7 @@ import UIKit
             dot.widthAnchor.constraint(equalToConstant: 26).isActive = true; dot.heightAnchor.constraint(equalToConstant: 26).isActive = true; dot.accessibilityLabel = "선택한 필기 색상 " + hex
             dot.addAction(UIAction { [weak self] _ in self?.selection.recolor(UIColor(hex: hex)) }, for: .touchUpInside); colors.addArrangedSubview(dot)
         }
-        let close = InkIcons.button("x", label: "선택 메뉴 닫기"); close.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside); colors.addArrangedSubview(close); stack.addArrangedSubview(colors)
+        let close = InkIcons.button("arrow-left", label: "선택 메뉴 닫기"); close.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside); colors.addArrangedSubview(close); stack.addArrangedSubview(colors)
         let actions = UIStackView(); actions.spacing = 3; actions.distribution = .equalSpacing
         func item(_ icon: String, _ label: String, _ action: @escaping () -> Void) {
             let button = InkIcons.button(icon, label: label); button.addAction(UIAction { _ in action() }, for: .touchUpInside); actions.addArrangedSubview(button)

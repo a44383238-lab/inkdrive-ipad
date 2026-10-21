@@ -70,12 +70,9 @@ enum RecordingCatalog {
         let back = InkIcons.button("skip-back", label: "10초 뒤로"); back.addTarget(self, action: #selector(backward), for: .touchUpInside)
         let nextButton = InkIcons.button("skip-forward", label: "10초 앞으로"); nextButton.addTarget(self, action: #selector(forward), for: .touchUpInside)
         playButton.isEnabled = false; playButton.addTarget(self, action: #selector(togglePlay), for: .touchUpInside)
-        speed.setTitle("1×", for: .normal); speed.accessibilityLabel = "재생 속도"; speed.showsMenuAsPrimaryAction = true
+        speed.setTitle("1×", for: .normal); speed.accessibilityLabel = "재생 속도"; speed.showsMenuAsPrimaryAction = false
         speed.heightAnchor.constraint(equalToConstant: 44).isActive = true; speed.widthAnchor.constraint(equalToConstant: 58).isActive = true
-        speed.menu = UIMenu(children: [0.5, 0.75, 1, 1.25, 1.5, 2].map { value in UIAction(title: "\(value)×") { [weak self] _ in
-            guard let self else { return }; self.rate = Float(value); self.speed.setTitle("\(value)×", for: .normal)
-            if self.player?.rate != 0 { self.player?.rate = self.rate }
-        } })
+        speed.addAction(UIAction { [weak self] _ in self?.showSpeeds() }, for: .touchUpInside)
         [back, playButton, nextButton, UIView(), loading, speed].forEach(controls.addArrangedSubview)
         stack.addArrangedSubview(controls); tableView.tableHeaderView = header
         interruptToken = NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] _ in
@@ -86,6 +83,17 @@ enum RecordingCatalog {
         super.viewDidDisappear(animated); if !keepPlayingWhenHidden { shutdown() }
     }
     deinit { if let interruptToken { NotificationCenter.default.removeObserver(interruptToken) } }
+    private func showSpeeds() {
+        let panel = InkPanelController(title: "재생 속도", message: nil, preferredStyle: .actionSheet)
+        for value in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0] {
+            panel.addAction(InkPanelAction(title: "\(value)×", style: .default) { [weak self] _ in
+                guard let self else { return }; self.rate = Float(value); self.speed.setTitle("\(value)×", for: .normal)
+                if let player = self.player, player.rate != 0 { player.rate = self.rate }
+            })
+        }
+        panel.popoverPresentationController?.sourceView = speed; panel.popoverPresentationController?.sourceRect = speed.bounds
+        present(panel, animated: true)
+    }
     @objc private func close() { dismiss(animated: true) }
     func shutdown() { generation += 1; teardown() }
     func toggleFromDock() { togglePlay() }

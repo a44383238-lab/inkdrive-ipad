@@ -63,10 +63,10 @@ final class InkDriveUITests: XCTestCase {
         app.buttons["한 페이지씩"].tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.6)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.6)))
         app.buttons["도구 추가"].tap()
-        XCTAssertTrue(app.buttons.matching(identifier: "펜").firstMatch.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["panel-action-펜"].waitForExistence(timeout: 4))
         attach("Add another pen", app)
         // The custom menu and toolbar both contain pens; choose the menu's last matching button.
-        app.buttons.matching(identifier: "펜").allElementsBoundByIndex.last!.tap()
+        app.buttons["panel-action-펜"].tap()
         XCTAssertTrue(app.staticTexts["기본 색상"].waitForExistence(timeout: 4))
         app.buttons["색상 #E60012"].tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.8)).tap()
