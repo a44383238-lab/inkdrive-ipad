@@ -46,12 +46,24 @@ jobs:
           xcrun simctl shutdown "$DEVICE" || true
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
-          xcodebuild test -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-tests.log
+          xcodebuild build-for-testing -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-build.log
+          xcrun simctl install "$DEVICE" build/app-tests/Build/Products/Debug-iphonesimulator/InkDrive.app
+          xcrun simctl launch "$DEVICE" app.inkdrive.notes --ui-smoke > build/app-launch.log 2>&1 || true
+          sleep 25
+          xcrun simctl io "$DEVICE" screenshot build/app-launch.png || true
+          xcrun simctl spawn "$DEVICE" log show --last 3m --style compact --predicate 'process == "InkDrive"' > build/app-startup.log 2>&1 || true
+          xcrun simctl terminate "$DEVICE" app.inkdrive.notes || true
+          xcodebuild test-without-building -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-tests.log
       - name: Export app screenshots
         if: always()
         run: |
           RESULT=$(find build/app-tests/Logs/Test -maxdepth 1 -name '*.xcresult' -type d 2>/dev/null | head -1 || true)
           if [ -n "$RESULT" ]; then xcrun xcresulttool export attachments --path "$RESULT" --output-path build/app-attachments || true; fi
+          if [ -n "$RESULT" ]; then xcrun xcresulttool export diagnostics --path "$RESULT" --output-path build/app-diagnostics || true; fi
+          DEVICE=$(python3 scripts/select-ipad-simulator.py)
+          xcrun simctl spawn "$DEVICE" log show --last 15m --style compact --predicate 'process == "InkDrive" OR eventMessage CONTAINS "app.inkdrive.notes"' > build/simulator.log 2>&1 || true
+          mkdir -p build/crashes
+          find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -name 'InkDrive*' -type f -exec cp {} build/crashes/ \; 2>/dev/null || true
       - name: Upload development IPA
         uses: actions/upload-artifact@v4
         with:
@@ -64,6 +76,8 @@ jobs:
             build/native-tests.log
             build/app-tests.log
             build/app-attachments/**
+            build/app-launch.png
+            build/app-startup.log
           if-no-files-found: error
           retention-days: 7
       - name: Upload build diagnostics
@@ -73,6 +87,9 @@ jobs:
           name: InkDrive-diagnostics-${{ github.run_number }}
           path: |
             build/*.log
+            build/*.png
             build/app-attachments/**
+            build/app-diagnostics/**
+            build/crashes/**
           if-no-files-found: ignore
           retention-days: 3

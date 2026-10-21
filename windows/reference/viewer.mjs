@@ -29,7 +29,8 @@ async function render() {
   await renderTask.promise; if (turn !== generation) return; renderTask = null;
   el('prev').disabled = number === 1; el('next').disabled = number === documentPDF.numPages;
   el('identity').textContent = ink ? `page ${model.id.slice(-4)} · source ${ink.sourceRevision.slice(0, 10)}` : 'PDF 내장 필기';
-  el('status').textContent = `${number} / ${documentPDF.numPages} · ${Math.round(zoom * 100)}% · 문서 해시·페이지 좌표 확인됨`;
+  el('status').textContent = `${number} / ${documentPDF.numPages} · ${Math.round(zoom * 100)}% · ${ink ? '원본·필기 버전 확인됨' : 'PDF 미리보기'}`;
+  document.querySelector('footer span:last-child').textContent=ink?'벡터 필기 · 한 페이지씩 표시':'원본 비수정 · 한 페이지씩 표시';
   document.body.dataset.rendered = `${number}:${zoom}`;
 }
 const update = () => render().catch(error => { if (error.name !== 'RenderingCancelledException') el('status').textContent = error.message; });

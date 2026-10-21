@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,rm,readFile,readdir,realpath,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {SchoolHTTP,syncCampus,resources,pluginFiles,courseIdentity,safeName} from '../shared/campus.mjs';
+import {SchoolHTTP,syncCampus,resources,pluginFiles,courseIdentity,safeName,text} from '../shared/campus.mjs';
 
 test('school metadata retains term and section; external links and traversal names are excluded',()=>{
   assert.deepEqual(courseIdentity({shortname:'통계 (2026-0020, IE2400211_066)'}),{term:'2026-0020',code:'IE2400211_066'});
@@ -35,4 +35,26 @@ test('expired login and interrupted download do not produce completed records',a
   const root=await mkdtemp(join(tmpdir(),'inkdrive-campus-fail-'));t.after(()=>rm(root,{recursive:true,force:true}));
   await assert.rejects(syncCampus({root,client:{html:async()=>'<form name="loginform"></form>'},deviceId:'test'}),/로그인/);
   assert.deepEqual(await readdir(root),[]);
+});
+test('assignment and notice attachments are collected while scripts and session values are excluded from saved text',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'inkdrive-notices-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const client={html:async url=>{
+    if(url==='https://plato.pusan.ac.kr/')return `{"sesskey":"memoryonly"}`;
+    if(url.includes('/course/'))return `<a href='/mod/assign/view.php?id=7'>과제</a><a href='/mod/forum/view.php?id=9'>공지</a>`;
+    if(url.includes('/assign/'))return `<h1>과제 11월 3일</h1><script>M.cfg={sesskey:'must-not-persist'}</script><a href='/pluginfile.php/7/assignment.pdf'>첨부</a>`;
+    if(url.includes('/forum/view'))return `<a href='/mod/forum/discuss.php?d=11'>공지</a>`;
+    if(url.includes('/forum/discuss'))return `<h1>수업자료</h1><script>token='must-not-persist'</script><a href='/pluginfile.php/11/notice.pdf'>첨부</a>`;
+    return '';
+  },request:async url=>url.includes('/lib/ajax/')?Response.json([{error:false,data:{courses:[{id:2,fullname:'통계',shortname:'통계 (2026-0020, IE1_066)'}]}}]):new Response('%PDF-fixture',{headers:{'Content-Type':'application/pdf'}})};
+  assert.equal((await syncCampus({root,client,deviceId:'test'})).downloaded,2);
+  const folder=join(root,'2026-0020','통계_IE1_066');assert.equal((await readdir(join(folder,'강의자료'))).length,2);
+  for(const name of ['assign_7.txt','notice_11.txt'])assert.doesNotMatch(await readFile(join(folder,'일정',name),'utf8'),/must-not-persist|sesskey|token/);
+  assert.equal(text('<h1>내용</h1><style>private</style><script>private</script>'),'내용');
+});
+test('download interrupted before completion never publishes an attachment or a successful sync state',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'inkdrive-partial-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const client={html:async url=>url.endsWith('.kr/')?`{"sesskey":"memory"}`:`<a href='/mod/ubfile/view.php?id=3'>자료</a>`,request:async url=>url.includes('/lib/ajax/')?Response.json([{error:false,data:{courses:[{id:2,fullname:'통계',shortname:'통계 (2026-0020, IE1_066)'}]}}]):new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array([1,2]));controller.error(new Error('network interrupted'));}}),{headers:{'Content-Type':'application/pdf'}})};
+  await assert.rejects(syncCampus({root,client,deviceId:'test'}),/interrupted/);
+  await assert.rejects(readFile(join(root,'.inkdrive','campus','devices','test.json')),e=>e.code==='ENOENT');
+  assert.deepEqual(await readdir(join(root,'2026-0020','통계_IE1_066')),['.campus-course.json']);
 });
