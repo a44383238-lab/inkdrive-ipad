@@ -20,6 +20,14 @@ import PencilKit
         XCTAssertEqual(editor.pdfView.displayMode, .singlePageContinuous)
         XCTAssertEqual(editor.pdfView.displayDirection, .vertical)
     }
+    func testInitialPaperFitsAndManualZoomSurvivesLayout() throws {
+        let editor = try editor()
+        let fit = editor.pdfView.scaleFactor
+        XCTAssertLessThanOrEqual(editor.pdfView.scaleFactor * 842, editor.pdfView.bounds.height + 1)
+        let chosen = fit * 1.4; editor.pdfView.scaleFactor = chosen
+        editor.view.setNeedsLayout(); editor.view.layoutIfNeeded()
+        XCTAssertEqual(editor.pdfView.scaleFactor, chosen, accuracy: 0.01)
+    }
     func testDrawingGestureIsEnabledAndOnlyPencilDraws() throws {
         let editor = try editor()
         let overlay = PageOverlay(record: editor.session.model.pages[0], editor: editor)

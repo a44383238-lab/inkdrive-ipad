@@ -12,6 +12,7 @@ import AVFoundation
     var listDocuments: (() throws -> [String])?
     private let tabs = UIStackView()
     private var switchingDocument = false
+    private var needsInitialPageFit = true
     private var savedPages: [String: Int] = [:]
     let pdfView = PDFView()
     let provider = OverlayProvider()
@@ -180,7 +181,7 @@ import AVFoundation
             // Drain outgoing overlays while they still refer to their original session.
             pdfView.document = nil; provider.overlays.removeAll()
             session.didChange = nil; session.statusChanged = nil; session = next; documentPath = path; bindSession()
-            pdfView.document = next.model.pdf; pdfView.autoScales = true
+            pdfView.document = next.model.pdf; needsInitialPageFit = true; view.setNeedsLayout()
             if let page = next.model.pdf.page(at: min(savedPages[path] ?? 0, next.model.pages.count - 1)) { pdfView.go(to: page) }
             status.text = next.store.url.deletingPathExtension().lastPathComponent
             rebuildTabs(); documentsChanged?(documentPaths); provider.applyTool(); updatePageNumber()
@@ -322,7 +323,7 @@ import AVFoundation
         for (label, action) in [
             ("한 페이지씩", { self.provider.commitAll(); self.pdfView.displayMode = .singlePage; UserDefaults.standard.set(false, forKey: "inkdrive.continuous-pages") }),
             ("연속 페이지", { self.provider.commitAll(); self.pdfView.displayMode = .singlePageContinuous; UserDefaults.standard.set(true, forKey: "inkdrive.continuous-pages") }),
-            ("화면에 맞추기", { self.pdfView.autoScales = true }),
+            ("화면에 맞추기", { self.needsInitialPageFit = true; self.view.setNeedsLayout() }),
             ("도구막대 가로·세로", { self.rotateToolbar() }),
             ("저장", { self.saveNow() })
         ] as [(String, () -> Void)] {
@@ -414,6 +415,16 @@ import AVFoundation
         let minimumY = view.safeAreaInsets.top + (openDocument == nil ? 40 : 68)
         floating.frame.origin.y = min(max(minimumY, floating.frame.origin.y), max(minimumY, view.bounds.height - floating.frame.height - view.safeAreaInsets.bottom))
         viewport.configure(pdfView)
+        if needsInitialPageFit, pdfView.bounds.width > 80, pdfView.bounds.height > 80,
+           let page = pdfView.currentPage ?? session.model.pdf.page(at: 0) {
+            needsInitialPageFit = false
+            let crop = page.bounds(for: .cropBox)
+            let rotated = page.rotation % 180 != 0
+            let width = rotated ? crop.height : crop.width, height = rotated ? crop.width : crop.height
+            let fit = min((pdfView.bounds.width - 48) / width, (pdfView.bounds.height - 32) / height)
+            pdfView.autoScales = false; pdfView.minScaleFactor = fit * 0.4; pdfView.maxScaleFactor = max(6, fit * 6); pdfView.scaleFactor = fit
+            pdfView.go(to: page)
+        }
     }
     private func iconButton(_ icon: String, label: String, action: Selector) -> UIButton {
         let item = InkIcons.button(icon, label: label, compact: true); item.addTarget(self, action: action, for: .touchUpInside); return item
