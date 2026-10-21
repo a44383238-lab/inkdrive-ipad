@@ -76,7 +76,10 @@ extension LibraryRepository {
                     let encoded = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
                     _ = try JSONDecoder().decode(DocumentAdapter.self, from: encoded)
                     let relative = String(file.path.dropFirst(scope.url.path.count + 1))
-                    updates.append((file, try FileNames.child(remap(relative), in: scope.url), bytes, encoded))
+                    let after: URL
+                    if let exact = moves.first(where: { $0.0.resolvingSymlinksInPath().standardizedFileURL == file.resolvingSymlinksInPath().standardizedFileURL }) { after = exact.1 }
+                    else { after = try FileNames.child(remap(relative), in: scope.url) }
+                    updates.append((file, after, bytes, encoded))
                 }
                 if let enumerationError { throw enumerationError }
                 for (from, to) in moves { try FileManager.default.moveItem(at: from, to: to); completed.append((from, to)) }

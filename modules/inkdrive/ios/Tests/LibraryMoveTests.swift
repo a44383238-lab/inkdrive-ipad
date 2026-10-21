@@ -40,6 +40,23 @@ import XCTest
         XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("B/A/source.html").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("A").path))
     }
+    func testMovingIndividualSourceAndNotebookUpdatesRelocatedSidecarOnly() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let suite = "InkDrive-move-" + UUID().uuidString, defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let repo = LibraryRepository(defaults: defaults); try repo.choose(root)
+        try repo.createFolder(parent: "", name: "Target")
+        _ = try repo.createNote(parent: "", name: "note", template: "plain")
+        try Data("source".utf8).write(to: root.appendingPathComponent("source.html"))
+        let adapter = DocumentAdapter(kind: "html-snapshot", originalPath: "source.html", originalSHA256: "hash", width: 500, height: 700)
+        try JSONEncoder().encode(adapter).write(to: root.appendingPathComponent("note.pdf.adapter.json"))
+        _ = try repo.moveItems(["source.html", "note.pdf"], into: "Target")
+        let output = root.appendingPathComponent("Target/note.pdf.adapter.json")
+        XCTAssertEqual(try JSONDecoder().decode(DocumentAdapter.self, from: Data(contentsOf: output)).originalPath, "Target/source.html")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("note.pdf.adapter.json").path))
+    }
     func testDestinationCollisionAndDescendantMoveLeaveSourcesUntouched() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
