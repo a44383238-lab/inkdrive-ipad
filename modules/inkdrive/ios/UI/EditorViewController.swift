@@ -68,7 +68,7 @@ import AVFoundation
         if let bytes = UserDefaults.standard.data(forKey: "inkdrive.tools.v1"),
            let decoded = try? JSONDecoder().decode([String: ToolSettings].self, from: bytes) { configurations = decoded }
         if UserDefaults.standard.object(forKey: "inkdrive.tool-presets.v2") == nil {
-            let defaults: [(EditorTool, String, Double, Double)] = [(.pen, "#000000", 0.5, 1), (.pen, "#2455D6", 0.5, 1), (.pen, "#DB3249", 0.5, 1), (.marker, "#79E047", 15, 0.4)]
+            let defaults: [(EditorTool, String, Double, Double)] = [(.pen, "#000000", 1.5, 1), (.pen, "#2455D6", 0.5, 1), (.pen, "#DB3249", 0.5, 1), (.marker, "#79E047", 15, 0.4)]
             let presets = defaults.compactMap { type, color, width, opacity -> Data? in
                 var value = ToolSettings(); value.color = color; value.width = width; value.opacity = opacity
                 return try? JSONEncoder().encode(ToolPreset(tool: type, settings: value))
@@ -89,6 +89,16 @@ import AVFoundation
                 entries.append(ToolbarEntry(tool: choice, settings: configurations[choice.rawValue] ?? ToolSettings()))
             }
             toolbar = ToolbarConfiguration(entries: entries)
+        }
+        if !UserDefaults.standard.bool(forKey: "inkdrive.solid-default.v1") {
+            // The former 0.5 PDF-point preset became a subpixel line at page fit.
+            // Migrate only the old opaque black default, preserving other colors/settings.
+            if let index = toolbar.entries.firstIndex(where: { $0.tool == .pen && ["#202020", "#000000"].contains($0.settings.color.uppercased()) && $0.settings.opacity == 1 }) {
+                toolbar.entries[index].settings.color = "#000000"
+                toolbar.entries[index].settings.width = max(1.5, toolbar.entries[index].settings.width)
+            }
+            UserDefaults.standard.set(true, forKey: "inkdrive.solid-default.v1")
+            persistToolbar()
         }
         tool = toolbar.active.tool
     }

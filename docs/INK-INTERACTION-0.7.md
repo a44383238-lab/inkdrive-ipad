@@ -2,7 +2,7 @@
 
 ## Intended behavior
 
-- The ordinary pen uses a pure black default, full opacity, and PencilKit monoline ink. Pencil remains a separate textured tool. Paper canvases always use light appearance regardless of the dark application chrome.
+- The ordinary pen uses a pure black default, full opacity, and PencilKit monoline ink. The old opaque black 0.5-point preset migrates once to at least 1.5px, avoiding a subpixel default at page fit; thinner widths remain selectable. Pencil remains a separate textured tool. Paper canvases always use light appearance regardless of the dark application chrome.
 - Toolbar entries have independent UUIDs and independent settings. Adding a pen never toggles off another pen. The same tool/color/width can appear more than once. A selected entry opens its own settings on a second tap. Duplicate and remove apply to that entry, not the whole tool category.
 - Hold a toolbar item for 0.35 seconds and drag over another slot to reorder it. Preserve identity, selection and order in `inkdrive.toolbar.v3`. The handle still moves the entire toolbar. The legacy preset/configuration keys remain available for migration.
 - Single-page mode uses horizontal direction. Finger swipe left goes forward and right goes back at page fit. While zoomed in, finger movement pans the paper. Fit is the minimum zoom; pinch-to-zoom in remains available. Page changes and viewport changes refit the page.

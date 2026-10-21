@@ -2,7 +2,7 @@ import SwiftUI
 import PDFKit
 
 private let ink = Color(white: 0.91)
-private let accent = Color(red: 1, green: 0.79, blue: 0.25)
+private let accent = Color(uiColor: InkTheme.accent)
 private let canvas = Color(white: 0.12)
 
 struct NativeIcon: View {

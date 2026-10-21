@@ -18,7 +18,7 @@ import PDFKit
     override init(frame: CGRect) {
         super.init(frame: frame)
         isOpaque = false; backgroundColor = .clear
-        outline.strokeColor = UIColor.systemBlue.cgColor; outline.fillColor = UIColor.clear.cgColor
+        outline.strokeColor = InkTheme.accent.cgColor; outline.fillColor = UIColor.clear.cgColor
         outline.lineDashPattern = [5, 4]; outline.lineWidth = 1.5; layer.addSublayer(outline)
         eraserCircle.fillColor = UIColor(white: 0.15, alpha: 0.14).cgColor
         eraserCircle.strokeColor = UIColor(white: 0.35, alpha: 0.65).cgColor

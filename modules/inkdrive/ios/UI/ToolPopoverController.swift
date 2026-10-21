@@ -16,7 +16,7 @@ import UIKit
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = UIColor(white: 0.135, alpha: 1); overrideUserInterfaceStyle = .dark; view.tintColor = UIColor(hex: "#E8C65A")
+        super.viewDidLoad(); view.backgroundColor = InkTheme.panel; overrideUserInterfaceStyle = .dark; view.tintColor = InkTheme.accent
         let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20), stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 18)])
@@ -72,7 +72,7 @@ import UIKit
             stack.addArrangedSubview(toggle("펜으로 복귀", settings.returnToPen) { [weak self] in self?.settings.returnToPen = $0; self?.publish() })
         }
         if tool == .marker { stack.addArrangedSubview(toggle("직선 형광펜", settings.markerStraight) { [weak self] in self?.settings.markerStraight = $0; self?.publish() }) }
-        let saved = UIButton(type: .system); saved.setTitle("+  즐겨찾기", for: .normal); saved.titleLabel?.font = .systemFont(ofSize: 12); saved.layer.borderWidth = 0.5; saved.layer.borderColor = UIColor(hex: "#E8C65A").cgColor; saved.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        let saved = UIButton(type: .system); saved.setTitle("+  즐겨찾기", for: .normal); saved.titleLabel?.font = .systemFont(ofSize: 12); saved.layer.borderWidth = 0.5; saved.layer.borderColor = InkTheme.accent.cgColor; saved.heightAnchor.constraint(equalToConstant: 36).isActive = true
         saved.setTitle("+  도구 복제", for: .normal)
         saved.addAction(UIAction { [weak self] _ in
             guard let self else { return }
@@ -91,7 +91,7 @@ import UIKit
     }
     private func slider(value: Double, min: Float, max: Float, unit: String, update: @escaping (Double) -> Void) -> UIView {
         let stack = UIStackView(); stack.spacing = 4; stack.alignment = .center
-        let slider = UISlider(); slider.minimumValue = min; slider.maximumValue = max; slider.value = Float(value); slider.tintColor = UIColor(hex: "#E8C65A")
+        let slider = UISlider(); slider.minimumValue = min; slider.maximumValue = max; slider.value = Float(value); slider.tintColor = InkTheme.accent
         slider.accessibilityLabel = unit == "px" ? "굵기 px" : "불투명도 %"
         let number = UILabel(); number.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium); number.textColor = UIColor(white: 0.85, alpha: 1)
         number.widthAnchor.constraint(equalToConstant: 58).isActive = true
@@ -113,7 +113,7 @@ import UIKit
     private func toggle(_ title: String, _ value: Bool, update: @escaping (Bool) -> Void) -> UIView {
         let row = UIStackView(); row.alignment = .center
         let label = UILabel(); label.text = title; label.font = .systemFont(ofSize: 13); row.addArrangedSubview(label)
-        let control = UISwitch(); control.isOn = value; control.onTintColor = UIColor(hex: "#E8C65A")
+        let control = UISwitch(); control.isOn = value; control.onTintColor = InkTheme.accent
         control.addAction(UIAction { [weak control] _ in update(control?.isOn ?? false) }, for: .valueChanged)
         row.addArrangedSubview(control); return row
     }

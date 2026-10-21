@@ -51,7 +51,7 @@ enum RecordingCatalog {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
         super.viewDidLoad(); InkTheme.navigation(self); InkTheme.table(tableView); title = "녹음"
-        view.backgroundColor = UIColor(white: 0.14, alpha: 1); overrideUserInterfaceStyle = .dark; view.tintColor = UIColor(hex: "#E8C65A")
+        view.backgroundColor = InkTheme.panel; overrideUserInterfaceStyle = .dark; view.tintColor = InkTheme.accent
         navigationItem.leftBarButtonItem = UIBarButtonItem(image: InkIcons.image("arrow-left"), style: .plain, target: self, action: #selector(close))
         navigationItem.leftBarButtonItem?.accessibilityLabel = "필기로"
         tableView.rowHeight = 64
@@ -133,7 +133,7 @@ enum RecordingCatalog {
         let row = rows[indexPath.row], cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil); cell.backgroundColor = InkTheme.row
         cell.textLabel?.text = row.title
         cell.detailTextLabel?.text = durations[row.path].map(Self.timestamp) ?? "—:—"
-        cell.imageView?.image = InkIcons.image("play"); cell.tintColor = UIColor(hex: "#E8C65A")
+        cell.imageView?.image = InkIcons.image("play"); cell.tintColor = InkTheme.accent
         cell.accessoryType = selection == indexPath.row ? .checkmark : .none
         cell.accessibilityLabel = "\(row.title), 녹음 재생"
         return cell
