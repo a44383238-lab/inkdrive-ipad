@@ -6,7 +6,7 @@ import { validateInk } from '../../shared/ink-format.mjs';
 import { resolveInside } from '../../scripts/daily-handoff.mjs';
 const sha = b => createHash('sha256').update(b).digest('hex');
 export class LibraryReader {
-  constructor(root,{cache=null}={}) {this.root=root;this.cache=cache;this.current=null;}
+  constructor(root,{cache=null}={}) {this.root=root;this.cache=cache?join(cache,sha(root)):null;this.current=null;}
   async list(relative='') {
     const root=await realpath(this.root),folder=relative?await resolveInside(root,relative):root;
     const entries=[];for(const item of await readdir(folder,{withFileTypes:true})) {
@@ -44,6 +44,7 @@ export class LibraryReader {
       const latest=await readLatest(root,id,{preferred:candidate??cached?.hash});
       const value=latest.display??cached;
       if(value) {
+        if(latest.display?.commit.file?.sha256 && latest.display.commit.file.sha256 !== fileHash) return this.current={key,pdf:bytes,ink:null,state:'waiting',heads:latest.heads.length};
         const background=value.preview??value.source;
         if(cacheFile&&latest.display){await mkdir(this.cache,{recursive:true});const temp=cacheFile+'.'+randomUUID()+'.partial';await writeFile(temp,JSON.stringify({hash:value.hash,ink:value.ink,source:background.toString('base64')}));await rename(temp,cacheFile);}
         return this.current={key,pdf:background,ink:value.ink,state:latest.state,heads:latest.heads.length};

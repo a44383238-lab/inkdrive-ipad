@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Windows.Markup;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
@@ -28,6 +29,7 @@ public sealed class InkDriveApp : Application {
     private Button Action(string name,Action action){var b=new Button{Content=name,Padding=new Thickness(13,8,13,8),Margin=new Thickness(0,0,8,0)};b.Click+=delegate{action();};return b;}
     private void Start(){
         Directory.CreateDirectory(local);try{root=File.ReadAllText(Path.Combine(local,"root.txt"));}catch{}
+        Resources.Add(typeof(Button),(Style)XamlReader.Parse("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='Button'><Setter Property='Background' Value='#E5ECF8'/><Setter Property='Foreground' Value='#294264'/><Setter Property='FontSize' Value='13'/><Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'><Border Background='{TemplateBinding Background}' CornerRadius='10' Padding='{TemplateBinding Padding}'><ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/></Border></ControlTemplate></Setter.Value></Setter></Style>"));
         var window=new Window{Title="InkDrive",Width=1280,Height=900,MinWidth=860,MinHeight=640,Background=new SolidColorBrush(Color.FromRgb(245,247,251)),WindowStartupLocation=WindowStartupLocation.CenterScreen};
         var dock=new DockPanel();var top=new WrapPanel{Margin=new Thickness(14)};
         top.Children.Add(Action("서재",()=>ShowLibrary("library")));
@@ -63,15 +65,17 @@ public sealed class InkDriveApp : Application {
         window.Closed+=delegate{Stop(server);};Run(window);
     }
     private static bool Allowed(Uri uri){return uri.Scheme=="https"&&(uri.Host=="plato.pusan.ac.kr"||uri.Host=="onestop.pusan.ac.kr"||uri.Host=="login.pusan.ac.kr");}
-    private void ShowLibrary(string path){school.Visibility=Visibility.Collapsed;library.Visibility=Visibility.Visible;if(library.CoreWebView2!=null)library.Source=new Uri(Url+path);}
+    private void ShowLibrary(string path){school.Visibility=Visibility.Collapsed;library.Visibility=Visibility.Visible;if(library.CoreWebView2!=null){var target=Url+path;if(library.CoreWebView2.Source==target)library.Reload();else library.Source=new Uri(target);}}
     private void ShowSchool(string url){library.Visibility=Visibility.Collapsed;school.Visibility=Visibility.Visible;if(school.CoreWebView2!=null)school.Source=new Uri(url);}
     private static void Stop(Process p){if(p==null)return;try{if(!p.HasExited)p.Kill();}catch{}p.Dispose();}
     private string Node(){var path=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"nodejs","node.exe");return File.Exists(path)?path:"node.exe";}
     private async Task ChooseRoot(){
-        using(var dialog=new System.Windows.Forms.FolderBrowserDialog{Description="iCloud Drive의 InkDrive 폴더",SelectedPath=root}){
-            if(dialog.ShowDialog()!=System.Windows.Forms.DialogResult.OK)return;
-            root=Path.GetFullPath(dialog.SelectedPath);File.WriteAllText(Path.Combine(local,"root.txt"),root);lastCheck=DateTime.MinValue;
-        }
+        var dialog=new Window{Title="InkDrive 폴더",Width=640,Height=180,WindowStartupLocation=WindowStartupLocation.CenterOwner,ResizeMode=ResizeMode.NoResize,Owner=MainWindow};
+        var panel=new StackPanel{Margin=new Thickness(20)};var field=new TextBox{Text=root,Margin=new Thickness(0,0,0,18),Padding=new Thickness(8)};
+        var row=new StackPanel{Orientation=Orientation.Horizontal};row.Children.Add(Action("찾아보기",()=>{using(var picker=new System.Windows.Forms.FolderBrowserDialog{SelectedPath=field.Text}){if(picker.ShowDialog()==System.Windows.Forms.DialogResult.OK)field.Text=picker.SelectedPath;}}));
+        row.Children.Add(Action("연결",()=>{if(Directory.Exists(field.Text))dialog.DialogResult=true;}));panel.Children.Add(field);panel.Children.Add(row);dialog.Content=panel;
+        if(dialog.ShowDialog()!=true)return;
+        root=Path.GetFullPath(field.Text);File.WriteAllText(Path.Combine(local,"root.txt"),root);lastCheck=DateTime.MinValue;
         Stop(server);server=null;await StartServer();ShowLibrary("library");status.Text="연결됨 · "+root;
     }
     private async Task StartServer(){
@@ -108,7 +112,7 @@ public sealed class InkDriveApp : Application {
     private async Task OpenAI(){
         if(String.IsNullOrEmpty(root)){status.Text="폴더를 먼저 연결하세요.";return;}
         try{
-            using(var client=new HttpClient{Timeout=TimeSpan.FromSeconds(1)}){try{await client.GetStringAsync("http://127.0.0.1:8769/api/status");ShowAI();return;}catch{}}
+            using(var client=new HttpClient{Timeout=TimeSpan.FromSeconds(1)}){try{var state=json.Deserialize<Dictionary<string,object>>(await client.GetStringAsync("http://127.0.0.1:8769/api/status"));if(!String.Equals((string)state["root"],root,StringComparison.OrdinalIgnoreCase)){status.Text="다른 서재의 수업 정리 실행기가 열려 있어요.";return;}ShowAI();return;}catch{}}
             var info=new ProcessStartInfo(Node(),"\""+Path.Combine(home,"scripts","desktop-control.mjs")+"\""){UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,WorkingDirectory=home};info.EnvironmentVariables["INKDRIVE_ROOT"]=root;ai=Process.Start(info);
             for(int i=0;i<30;i++){using(var client=new HttpClient()){try{await client.GetStringAsync("http://127.0.0.1:8769/api/status");ShowAI();return;}catch{}}await Task.Delay(200);}
         }catch{}status.Text="수업 정리 실행기를 확인해 주세요.";

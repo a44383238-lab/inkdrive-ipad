@@ -39,7 +39,8 @@ enum CampusHTML {
         }
     }
     static func text(_ html: String) -> String {
-        html.replacingOccurrences(of: "<[^>]*>", with: " ", options: .regularExpression)
+        html.replacingOccurrences(of: "(?is)<(?:script|style)\\b[^>]*>.*?</(?:script|style)>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "<[^>]*>", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(of: "&quot;", with: "\"")
             .replacingOccurrences(of: "&#39;", with: "'").replacingOccurrences(of: "&nbsp;", with: " ")
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,7 +51,7 @@ enum CampusHTML {
             let href = row[1].replacingOccurrences(of: "&amp;", with: "&")
             guard let url = URL(string: href, relativeTo: URL(string: "https://plato.pusan.ac.kr/"))?.absoluteURL,
                   url.host == "plato.pusan.ac.kr", url.scheme == "https",
-                  let kind = ["ubfile", "resource", "assign", "url", "folder", "page"].first(where: { url.path == "/mod/\($0)/view.php" }),
+                  let kind = ["ubfile", "resource", "assign", "url", "folder", "page", "forum"].first(where: { url.path == "/mod/\($0)/view.php" }),
                   let id = URLComponents(url: url, resolvingAgainstBaseURL: true)?.queryItems?.first(where: { $0.name == "id" })?.value,
                   id.range(of: "^[0-9]+$", options: .regularExpression) != nil, seen.insert(kind + id).inserted else { return nil }
             return CampusResource(id: id, title: String(text(row[2]).prefix(120)), kind: kind, url: url.absoluteString)
@@ -144,16 +145,32 @@ final class CampusRedirects: NSObject, URLSessionTaskDelegate {
                     let page = try await html("https://plato.pusan.ac.kr/course/view.php?id=\(course.id)&mode=sections")
                     let resources = CampusHTML.resources(page); state.resources[String(course.id)] = resources
                     for item in resources {
+                        var detail: String?
                         if item.kind == "assign" || item.kind == "page" || item.kind == "url" {
-                            let detail = try await html(item.url)
+                            detail = try await html(item.url)
                             let folder = try courseFolder(course, root: root).appendingPathComponent("일정")
                             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                            try Data(CampusHTML.text(detail).utf8).write(to: folder.appendingPathComponent("\(item.kind)_\(item.id).txt"), options: .atomic)
-                        } else {
+                            try Data(CampusHTML.text(detail!).utf8).write(to: folder.appendingPathComponent("\(item.kind)_\(item.id).txt"), options: .atomic)
+                        }
+                        do {
                             let urls: [URL]
                             if item.kind == "ubfile" { urls = [URL(string: "https://plato.pusan.ac.kr/local/csmsdoc/download.php?id=\(item.id)&tp=m&pg=ubfile")!] }
+                            else if item.kind == "forum" {
+                                let forum = try await html(item.url)
+                                var attached = CampusHTML.pluginFiles(forum)
+                                let discussions = Set(CampusHTML.matches("(?:https://plato\\.pusan\\.ac\\.kr)?/mod/forum/discuss\\.php\\?d=([0-9]+)", forum).map { $0[1] })
+                                for id in discussions.sorted(by: { (Int($0) ?? 0) > (Int($1) ?? 0) }).prefix(20) {
+                                    let notice = try await html("https://plato.pusan.ac.kr/mod/forum/discuss.php?d=\(id)")
+                                    attached += CampusHTML.pluginFiles(notice)
+                                    let folder = try courseFolder(course, root: root).appendingPathComponent("일정")
+                                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                                    try Data(CampusHTML.text(notice).utf8).write(to: folder.appendingPathComponent("notice_\(id).txt"), options: .atomic)
+                                }
+                                urls = Array(Set(attached))
+                            } else if let detail { urls = CampusHTML.pluginFiles(detail) }
                             else { urls = CampusHTML.pluginFiles(try await html(item.url)) }
                             for url in urls {
+                                if ["mp4", "mov", "m3u8", "mpd", "webm"].contains(url.pathExtension.lowercased()) { continue }
                                 let identity = "\(course.identity!.term)/\(course.id)/\(item.kind)/\(item.id)/" + CoordinatedStore.digest(Data(url.absoluteString.utf8))
                                 if !manual, let old = state.attachments[identity], Date().timeIntervalSince(old.checked) < 86400 { continue }
                                 try await download(url, item: item, course: course, identity: identity, root: root)

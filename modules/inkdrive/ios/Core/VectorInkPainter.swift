@@ -13,7 +13,9 @@ enum VectorInkPainter {
                 context.clip(using: mask.usesEvenOddFillRule ? .evenOdd : .winding)
             }
             let points = Array(stroke.path.interpolatedPoints(by: .distance(0.5)))
-            guard !points.isEmpty else { context.restoreGState(); continue }
+            guard !points.isEmpty, points.allSatisfy({ p in
+                p.location.x.isFinite && p.location.y.isFinite && p.size.width.isFinite && p.size.height.isFinite && p.size.width > 0 && p.size.height > 0 && p.opacity.isFinite
+            }) else { context.restoreGState(); continue }
             let color = stroke.ink.color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
             let uniform = points.allSatisfy { abs($0.opacity - points[0].opacity) < 0.0001 }
             context.setFillColor(color.cgColor)

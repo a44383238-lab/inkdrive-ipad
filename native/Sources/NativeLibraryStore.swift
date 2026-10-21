@@ -46,6 +46,7 @@ enum LibraryScreen { case library, today, campus, settings }
                 for subject in ["통계학", "산업데이터과학", "작업설계", "강의자료"] { try repository.createFolder(parent: "", name: subject) }
                 _ = try repository.createNote(parent: "통계학", name: "강의 1", template: "ruled")
                 _ = try repository.createNote(parent: "통계학", name: "강의 2", template: "grid")
+                try Data("<html><meta charset='utf-8'><body style='padding:40px;font-family:sans-serif'><h1>InkDrive HTML</h1><p>Fixed snapshot keeps the original document.</p></body></html>".utf8).write(to: folder.appendingPathComponent("강의자료/스냅샷.html"))
             } catch { message = error.localizedDescription }
         }
         #endif

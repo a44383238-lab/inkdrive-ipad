@@ -40,8 +40,14 @@ final class InkJournal {
            let value = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any], let n = value["inkRevision"] as? Int { revision = n }
         else { parent = nil }
         let heads = try completeHeads()
-        if parent == nil, heads.count == 1 {
-            parent = heads[0].hash; revision = heads[0].revision
+        if heads.count == 1 {
+            let head = heads[0]
+            let descriptorData = try Data(contentsOf: self.root.appendingPathComponent("commits/\(head.hash).json"))
+            let descriptor = try JSONSerialization.jsonObject(with: descriptorData) as? [String: Any]
+            let fileSHA = (descriptor?["file"] as? [String: Any])?["sha256"] as? String
+            if parent == nil || fileSHA == (try? FileHasher.digest(documentURL)) {
+                parent = head.hash; revision = head.revision
+            }
         }
     }
     private func completeHeads() throws -> [(hash: String, revision: Int)] {

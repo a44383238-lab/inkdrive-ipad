@@ -36,6 +36,23 @@ final class InkDriveUITests: XCTestCase {
         attach("Document tabs", app)
         app.buttons["서재로"].tap()
         XCTAssertTrue(app.buttons["강의 1.pdf"].waitForExistence(timeout: 10))
+        app.buttons["상위 폴더"].tap()
+        app.buttons["학교"].tap()
+        XCTAssertTrue(app.buttons["지금 확인"].waitForExistence(timeout: 8))
+        attach("Campus controls", app)
+        app.buttons["서재"].tap()
+        app.buttons["강의자료"].tap(); app.buttons["스냅샷.html"].tap()
+        let snapshot = app.buttons["필기용 고정본"]
+        XCTAssertTrue(snapshot.waitForExistence(timeout: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: snapshot)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 15), .completed)
+        attach("HTML material", app); snapshot.tap()
+        let returned = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: app.buttons["상위 폴더"])
+        XCTAssertEqual(XCTWaiter.wait(for: [returned], timeout: 10), .completed)
+        app.buttons["상위 폴더"].tap(); app.buttons["Snapshots"].tap()
+        let fixed = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "스냅샷_")).firstMatch
+        XCTAssertTrue(fixed.waitForExistence(timeout: 8)); fixed.tap()
+        XCTAssertTrue(app.buttons["펜"].waitForExistence(timeout: 10)); attach("HTML snapshot editor", app)
     }
     private func attach(_ name: String, _ app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)

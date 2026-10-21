@@ -50,10 +50,10 @@ final class PDFModel {
         guard let base = pdf.dataRepresentation(), let copy = PDFDocument(data: base) else { throw InkError.serialization }
         for (index, record) in pages.enumerated() {
             guard let page = copy.page(at: index) else { throw InkError.serialization }
-            let identity = PDFAnnotation(bounds: .zero, forType: .text, withProperties: nil)
+            let identity = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
             identity.userName = "InkDrive.PageID.v1"; identity.contents = record.id.uuidString
             identity.shouldDisplay = false; identity.shouldPrint = false; page.addAnnotation(identity)
-            let documentIdentity = PDFAnnotation(bounds: .zero, forType: .text, withProperties: nil)
+            let documentIdentity = PDFAnnotation(bounds: CGRect(x: 0, y: 0, width: 1, height: 1), forType: .text, withProperties: nil)
             documentIdentity.userName = "InkDrive.DocumentID.v1"; documentIdentity.contents = documentID.uuidString
             documentIdentity.shouldDisplay = false; documentIdentity.shouldPrint = false; page.addAnnotation(documentIdentity)
             if includeInk && !record.drawing.strokes.isEmpty { page.addAnnotation(InkAnnotation(drawing: record.drawing, crop: page.bounds(for: .cropBox))) }

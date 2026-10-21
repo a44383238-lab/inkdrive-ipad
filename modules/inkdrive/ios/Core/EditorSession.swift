@@ -166,6 +166,7 @@ import PencilKit
     }
     private func replaceFromDisk(_ snapshot: FileSnapshot) throws {
         let replacement = try PDFModel(data: snapshot.data)
+        if let commits { self.commits = try InkCommitStore(root: commits.libraryRoot, documentID: replacement.documentID, documentURL: commits.documentURL) }
         model = replacement; digest = snapshot.digest; revision = 0; savedRevision = 0; blocked = false
         history.removeAllActions(); didChange?(); statusChanged?("외부 버전을 다시 열었어요")
     }

@@ -38,8 +38,11 @@ import UIKit
                 revision: 1, createdAt: Date(timeIntervalSince1970: 100), now: Date(timeIntervalSince1970: 200))
         }
         XCTAssertThrowsError(try common(drawing(), []))
-        XCTAssertNoThrow(try common(drawing(mask: UIBezierPath(rect: CGRect(x: 0, y: 0, width: 20, height: 20))), [UUID()]))
-        let masked = try? common(drawing(mask: UIBezierPath(rect: CGRect(x: 0, y: 0, width: 20, height: 20))), [UUID()])
-        XCTAssertEqual(masked?.pages.first?.strokes.first?.mask?.first, [0, 0, 700])
+        XCTAssertNoThrow(try common(drawing(mask: UIBezierPath(rect: CGRect(x: 0, y: 0, width: 80, height: 80))), [UUID()]))
+        let masked = try? common(drawing(mask: UIBezierPath(rect: CGRect(x: 0, y: 0, width: 80, height: 80))), [UUID()])
+        let vertices = masked?.pages.first?.strokes.first?.mask?.filter { $0.count == 3 } ?? []
+        // UIBezierPath may start a rectangle at any corner. Assert its geometry, not serialization order.
+        XCTAssertEqual(Set(vertices.map { $0[1] }), Set<Double>([0, 80]))
+        XCTAssertEqual(Set(vertices.map { $0[2] }), Set<Double>([620, 700]))
     }
 }

@@ -23,7 +23,7 @@ export function resources(html) {
   const seen = new Set(), result = [];
   for (const match of html.matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
     let url; try { url = schoolURL(match[1]); } catch { continue; }
-    const kind = /^\/mod\/(ubfile|resource|assign|folder|url|page)\/view\.php$/.exec(url.pathname)?.[1], id = url.searchParams.get('id');
+    const kind = /^\/mod\/(ubfile|resource|assign|folder|url|page|forum)\/view\.php$/.exec(url.pathname)?.[1], id = url.searchParams.get('id');
     if (url.hostname !== 'plato.pusan.ac.kr' || !kind || !/^\d+$/.test(id) || seen.has(kind+id)) continue;
     seen.add(kind+id); result.push({ id,kind,title:text(match[2]).slice(0,120),url:url.href });
   }
@@ -59,8 +59,8 @@ export class SchoolHTTP {
     // Keep rotated session cookies in process memory and return them to the native profile.
     for (const raw of response.headers.getSetCookie?.() ?? []) {
       const [pair,...attrs] = raw.split(';'), cut=pair.indexOf('='); if(cut<1) continue;
-      const c={name:pair.slice(0,cut).trim(),value:pair.slice(cut+1),domain:url.hostname,path:'/',secure:true,httpOnly:false};
-      for(const attr of attrs){const [k,...v]=attr.trim().split('='); if(k.toLowerCase()==='domain')c.domain=v.join('='); if(k.toLowerCase()==='path')c.path=v.join('='); if(k.toLowerCase()==='httponly')c.httpOnly=true; if(k.toLowerCase()==='expires')c.expires=Date.parse(v.join('='))/1000;}
+      const c={name:pair.slice(0,cut).trim(),value:pair.slice(cut+1),domain:url.hostname,path:url.pathname.slice(0,url.pathname.lastIndexOf('/'))||'/',secure:true,httpOnly:false};
+      for(const attr of attrs){const [k,...v]=attr.trim().split('='); if(k.toLowerCase()==='domain')c.domain=v.join('='); if(k.toLowerCase()==='path')c.path=v.join('='); if(k.toLowerCase()==='httponly')c.httpOnly=true; if(k.toLowerCase()==='expires')c.expires=Date.parse(v.join('='))/1000; if(k.toLowerCase()==='max-age')c.expires=Date.now()/1000+Number(v.join('='));}
       const domain=c.domain.replace(/^\./,''); if(url.hostname!==domain && !url.hostname.endsWith('.'+domain))continue;
       this.cookies=this.cookies.filter(x=>!((x.name??x.Name)===c.name&&(x.domain??x.Domain)===c.domain&&(x.path??x.Path)===c.path));this.cookies.push(c);
     }
@@ -87,11 +87,19 @@ export async function syncCampus({root,client,deviceId,manual=false,now=Date.now
     await atomic(root,`${folder}/.campus-course.json`,JSON.stringify(course));
     const items=resources(await client.html(`https://plato.pusan.ac.kr/course/view.php?id=${course.id}&mode=sections`)); state.resources[course.id]=items;
     for(const item of items) {
+      let detail=null;
       if(['assign','url','page'].includes(item.kind)) {
-        await atomic(root,`${folder}/일정/${item.kind}_${item.id}.txt`,text(await client.html(item.url)));continue;
+        detail=await client.html(item.url);await atomic(root,`${folder}/일정/${item.kind}_${item.id}.txt`,text(detail));
       }
-      const urls=item.kind==='ubfile' ? [`https://plato.pusan.ac.kr/local/csmsdoc/download.php?id=${item.id}&tp=m&pg=ubfile`] : pluginFiles(await client.html(item.url));
+      if(item.kind!=='ubfile'&&detail===null)detail=await client.html(item.url);
+      let urls=item.kind==='ubfile' ? [`https://plato.pusan.ac.kr/local/csmsdoc/download.php?id=${item.id}&tp=m&pg=ubfile`] : pluginFiles(detail);
+      if(item.kind==='forum'){
+        const discussions=[...new Set([...detail.matchAll(/\/mod\/forum\/discuss\.php\?d=(\d+)/g)].map(m=>m[1]))].slice(0,20);
+        for(const id of discussions){const notice=await client.html(`https://plato.pusan.ac.kr/mod/forum/discuss.php?d=${id}`);urls.push(...pluginFiles(notice));await atomic(root,`${folder}/일정/notice_${id}.txt`,text(notice));}
+      }
+      urls=[...new Set(urls)];
       for(const url of urls) {
+        if(/\.(mp4|mov|m3u8|mpd|webm)$/i.test(new URL(url).pathname))continue;
         const key=`${info.term}/${course.id}/${item.kind}/${item.id}/${hash(url)}`,old=state.attachments[key];
         if(!manual&&old&&now-Date.parse(old.checked)<86400000)continue;
         const response=await client.request(url,{headers:{Referer:item.url}});

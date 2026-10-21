@@ -26,6 +26,7 @@ import UIKit
         let drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.pen, color: .blue), path: PKStrokePath(controlPoints: points, creationDate: Date(timeIntervalSince1970: 100)))])
         model.pages[0].drawing = drawing
         let file = try model.snapshot(); try file.write(to: url)
+        let pdfAttachment = XCTAttachment(data: file, uniformTypeIdentifier: "com.adobe.pdf"); pdfAttachment.name = "Native vector appearance"; pdfAttachment.lifetime = .keepAlways; add(pdfAttachment)
         let reopened = try PDFModel(data: file)
         XCTAssertEqual(reopened.documentID, model.documentID); XCTAssertEqual(reopened.pages[0].id, model.pages[0].id)
         XCTAssertEqual(reopened.pages[0].drawing.strokes.count, 1)
@@ -46,6 +47,7 @@ import UIKit
                 XCTAssertEqual(ink.pages[0].strokes[0].id, PortableInkExporter.stableIDs(drawing, pageID: model.pages[0].id)[0].uuidString.lowercased())
                 let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json"); attachment.name = "Native portable ink"; attachment.lifetime = .keepAlways; add(attachment)
             }
+            if key == "source" { let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "com.adobe.pdf"); attachment.name = "Native ink background"; attachment.lifetime = .keepAlways; add(attachment) }
         }
         XCTAssertEqual(try Data(contentsOf: url), file)
     }
@@ -56,6 +58,7 @@ import UIKit
         XCTAssertEqual(CampusHTML.resources(html).map(\.id), ["12", "14"])
         XCTAssertEqual(CampusHTML.resources(html)[0].title, "자료")
         XCTAssertFalse(CampusHTML.safeName("../../x.pdf").contains("/"))
+        XCTAssertEqual(CampusHTML.text("<h1>과제</h1><script>M.cfg={sesskey:'private'}</script><style>hidden</style>"), "과제")
         XCTAssertEqual(CampusHTML.pluginFiles("<a href='https://evil.test/pluginfile.php/a.pdf'>bad</a>").count, 0)
     }
     func testAdapterPreservesOriginalSlideUnitsAndStableIDsAfterReorder() throws {
@@ -71,5 +74,24 @@ import UIKit
             XCTAssertEqual(output.strokes[0].samples[0].x,w/2,accuracy:0.001)
             XCTAssertEqual(output.strokes[0].samples[0].y,h/2,accuracy:0.001)
         }
+    }
+    func testReopenAdoptsAnExternalCommitOnlyWhenThePDFHasArrived() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let model = try PDFModel(data: PDFModel.blank(template: .plain)), url = root.appendingPathComponent("note.pdf")
+        let first = try model.snapshot(); try first.write(to: url)
+        let a = try InkCommitStore(root: root, documentID: model.documentID, documentURL: url); try a.publish(model, fileBytes: first)
+        let key = "inkdrive.head." + model.documentID.uuidString
+        let oldHead = UserDefaults.standard.string(forKey: key)
+        let b = try InkCommitStore(root: root, documentID: model.documentID, documentURL: url)
+        _ = try model.insertBlank(at: 1, template: .plain)
+        let second = try model.snapshot(); try b.publish(model, fileBytes: second)
+        UserDefaults.standard.set(oldHead, forKey: key)
+        let pending = try InkCommitStore(root: root, documentID: model.documentID, documentURL: url)
+        XCTAssertThrowsError(try pending.checkHead())
+        try second.write(to: url)
+        let reopened = try InkCommitStore(root: root, documentID: model.documentID, documentURL: url)
+        XCTAssertNoThrow(try reopened.checkHead())
     }
 }

@@ -23,5 +23,5 @@ test('native-compatible commit connects PDF, independent ink and local cache acr
   const commits=join(root,'.inkdrive','documents',ink.documentId,'commits');await rm(join(commits,revision.hash+'.json'));await writeFile(join(commits,hash+'.json'),data);
   const reader=new LibraryReader(root,{cache}),opened=await reader.open('note.pdf');assert.equal(opened.ink.documentId,ink.documentId);assert.equal(opened.state,'ready');
   await rename(join(root,'note.pdf'),join(root,'renamed.pdf'));assert.equal((await reader.open('renamed.pdf')).ink.documentId,ink.documentId);
-  assert.equal((await readFile(join(cache,ink.documentId+'.json'),'utf8')).includes('sourceRevision'),true);
+  assert.equal((await readFile(join(cache,sha(root),ink.documentId+'.json'),'utf8')).includes('sourceRevision'),true);
 });
