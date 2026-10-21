@@ -27,17 +27,11 @@ final class InkAnnotation: PDFAnnotation {
         do { return try PKDrawing(data: bytes) } catch { throw InkError.corruptInk }
     }
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
-        let canvasRect = CGRect(origin: .zero, size: crop.size)
-        let area = max(1, crop.width * crop.height)
-        let scale = min(2, sqrt(16_000_000 / area))
-        let image = drawing.image(from: canvasRect, scale: scale)
         context.saveGState()
         context.clip(to: crop)
         context.translateBy(x: crop.minX, y: crop.maxY)
         context.scaleBy(x: 1, y: -1)
-        UIGraphicsPushContext(context)
-        image.draw(in: canvasRect)
-        UIGraphicsPopContext()
+        VectorInkPainter.draw(drawing, in: context)
         context.restoreGState()
     }
 }

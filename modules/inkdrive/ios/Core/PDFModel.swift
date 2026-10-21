@@ -13,13 +13,15 @@ final class NotebookPage {
 
 final class PDFModel {
     let pdf: PDFDocument
+    let documentID: UUID
     private(set) var pages: [NotebookPage]
-    init(data: Data) throws {
+    init(data: Data, documentID: UUID? = nil, pageIDs: [UUID]? = nil) throws {
         guard let document = PDFDocument(data: data) else { throw InkError.invalidPDF }
         guard !document.isLocked else { throw InkError.locked }
         guard document.pageCount > 0 else { throw InkError.invalidPDF }
         guard document.allowsCommenting, document.allowsDocumentChanges else { throw InkError.readOnly }
         var records: [NotebookPage] = []
+        var documentIDs = Set<UUID>()
         for index in 0..<document.pageCount {
             guard let page = document.page(at: index) else { throw InkError.invalidPDF }
             let crop = page.bounds(for: .cropBox)
@@ -31,21 +33,30 @@ final class PDFModel {
             let drawing = try owned.first.map(InkAnnotation.decode) ?? PKDrawing()
             owned.forEach(page.removeAnnotation)
             let identities = page.annotations.filter { $0.userName == "InkDrive.PageID.v1" }
-            let id = identities.first.flatMap { UUID(uuidString: $0.contents ?? "") } ?? UUID()
+            let id = identities.first.flatMap { UUID(uuidString: $0.contents ?? "") } ?? (pageIDs?.indices.contains(index) == true ? pageIDs![index] : UUID())
             identities.forEach(page.removeAnnotation)
+            let docs = page.annotations.filter { $0.userName == "InkDrive.DocumentID.v1" }
+            for item in docs { if let uuid = UUID(uuidString: item.contents ?? "") { documentIDs.insert(uuid) } }
+            docs.forEach(page.removeAnnotation)
             records.append(NotebookPage(page: page, drawing: drawing, id: id))
         }
+        guard documentIDs.count <= 1, Set(records.map(\.id)).count == records.count else { throw InkError.corruptInk }
+        if let documentID, let embedded = documentIDs.first, documentID != embedded { throw InkError.conflict }
+        self.documentID = documentIDs.first ?? documentID ?? UUID()
         self.pdf = document; self.pages = records
     }
     func record(for page: PDFPage) -> NotebookPage? { pages.first { $0.page === page } }
-    func snapshot() throws -> Data {
+    func snapshot(includeInk: Bool = true) throws -> Data {
         guard let base = pdf.dataRepresentation(), let copy = PDFDocument(data: base) else { throw InkError.serialization }
         for (index, record) in pages.enumerated() {
             guard let page = copy.page(at: index) else { throw InkError.serialization }
             let identity = PDFAnnotation(bounds: .zero, forType: .text, withProperties: nil)
             identity.userName = "InkDrive.PageID.v1"; identity.contents = record.id.uuidString
             identity.shouldDisplay = false; identity.shouldPrint = false; page.addAnnotation(identity)
-            if !record.drawing.strokes.isEmpty { page.addAnnotation(InkAnnotation(drawing: record.drawing, crop: page.bounds(for: .cropBox))) }
+            let documentIdentity = PDFAnnotation(bounds: .zero, forType: .text, withProperties: nil)
+            documentIdentity.userName = "InkDrive.DocumentID.v1"; documentIdentity.contents = documentID.uuidString
+            documentIdentity.shouldDisplay = false; documentIdentity.shouldPrint = false; page.addAnnotation(documentIdentity)
+            if includeInk && !record.drawing.strokes.isEmpty { page.addAnnotation(InkAnnotation(drawing: record.drawing, crop: page.bounds(for: .cropBox))) }
         }
         guard let bytes = copy.dataRepresentation(), let check = PDFDocument(data: bytes), check.pageCount == pages.count else {
             throw InkError.serialization

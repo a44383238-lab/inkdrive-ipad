@@ -13,6 +13,9 @@ struct LessonRecord: Codable {
     var materials: [String]
     var endedAt: String?
     var sourceDigests: [String: String]?
+    var courseID: String?
+    var documentID: String?
+    var recordingTimeline: [String: String]?
     var requestedOutputs = ["transcript", "lecture-notes", "review-questions"]
 }
 
@@ -45,7 +48,7 @@ struct LessonRecord: Codable {
             try FileManager.default.contentsOfDirectory(at: coordinated, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey], options: .skipsHiddenFiles).compactMap { item in
                 let values = try item.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
                 let directory = values.isDirectory == true
-                guard directory || ["pdf", "md", "txt"].contains(item.pathExtension.lowercased()) else { return nil }
+                guard directory || !item.lastPathComponent.hasSuffix(".adapter.json") else { return nil }
                 return ["name": item.lastPathComponent, "path": relative.isEmpty ? item.lastPathComponent : relative + "/" + item.lastPathComponent,
                         "directory": directory, "bytes": values.fileSize ?? 0, "modified": values.contentModificationDate?.timeIntervalSince1970 ?? 0]
             }
@@ -140,8 +143,19 @@ struct LessonRecord: Codable {
         if let existing = try lessons(date: date).last(where: { $0.pdf == pdf && $0.endedAt == nil }) { return existing }
         let components = pdf.split(separator: "/").map(String.init)
         let title = URL(fileURLWithPath: components.last ?? pdf).deletingPathExtension().lastPathComponent
-        let subject = components.count > 1 ? components[components.count - 2] : "수업"
-        let lesson = LessonRecord(id: UUID().uuidString, date: date, subject: subject, title: title, pdf: pdf, recordings: [], materials: [], endedAt: nil)
+        var subject = components.count > 1 ? components[components.count - 2] : "수업"
+        var courseID: String?
+        let rootScope = try access()
+        if components.count > 1 {
+            for count in stride(from: components.count - 1, through: 1, by: -1) {
+                let folder = try FileNames.child(components.prefix(count).joined(separator: "/"), in: rootScope.url)
+                if let data = try? Data(contentsOf: folder.appendingPathComponent(".campus-course.json")), let course = try? JSONDecoder().decode(CampusCourse.self, from: data) {
+                    subject = course.fullname; courseID = String(course.id); break
+                }
+            }
+        }
+        var lesson = LessonRecord(id: UUID().uuidString, date: date, subject: subject, title: title, pdf: pdf, recordings: [], materials: [], endedAt: nil)
+        lesson.courseID = courseID
         try saveLesson(lesson); return lesson
     }
     func refreshLessonSources(pdf relative: String) throws {

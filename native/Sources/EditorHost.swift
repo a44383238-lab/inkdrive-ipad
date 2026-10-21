@@ -58,7 +58,8 @@ struct EditorHost: UIViewControllerRepresentable {
         editor.canRecord = true
         editor.recordingAction = { [weak editor] in
             guard let editor else { throw InkError.unavailable }
-            let lesson = try repo.quickLesson(pdf: editor.documentPath, date: NativeLibraryStore.today())
+            var lesson = try repo.quickLesson(pdf: editor.documentPath, date: NativeLibraryStore.today())
+            lesson.documentID = editor.session.model.documentID.uuidString.lowercased()
             try await RecordingService.shared.start(lesson: lesson, repository: repo)
         }
         editor.recordingsAction = { [weak self, weak editor] in

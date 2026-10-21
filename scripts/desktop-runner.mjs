@@ -122,6 +122,7 @@ async function executeRealJob(root, job, update) {
   });
 }
 export async function configuredRunner() {
+  if (process.env.INKDRIVE_ROOT) return new DesktopRunner({root:process.env.INKDRIVE_ROOT,stateFile:join(appRoot,'../work/desktop-status.json')});
   const library = JSON.parse(await readFile(join(appRoot, 'config/library.local.json'), 'utf8'));
   return new DesktopRunner({ root: library.root, stateFile: join(appRoot, '../work/desktop-status.json') });
 }

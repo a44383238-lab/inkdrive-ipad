@@ -108,6 +108,9 @@ export async function prepareDay(inputRoot, date) {
         const outputDir = `AI/${date}/${key}`;
         const job = { schemaVersion: 1, key, fingerprint, lessonId: lesson.id, recordingIndex, date, subject: lesson.subject,
           title: lesson.title, sources, outputDir, prompt: `${outputDir}/prompt.md`, state: 'ready' };
+        if(lesson.documentID) job.documentId=lesson.documentID;
+        if(lesson.courseID) job.courseId=lesson.courseID;
+        if(lesson.recordingTimeline?.[audioPath]) job.recordingStartedAt=lesson.recordingTimeline[audioPath];
         const receipt = await optionalJSON(root, `${outputDir}/complete.json`);
         if (receipt?.fingerprint === fingerprint) {
           const matches = await Promise.all(artifacts.map(async name => {

@@ -7,6 +7,7 @@ final class InkDriveUITests: XCTestCase {
         XCTAssertTrue(app.buttons["통계학"].waitForExistence(timeout: 12))
         XCTAssertFalse(app.buttons["새 수업 녹음"].exists)
         XCTAssertFalse(app.buttons["수업 연결"].exists)
+        XCTAssertTrue(app.buttons["학교"].exists)
         attach("Swift library", app)
         app.buttons["통계학"].tap()
         XCTAssertTrue(app.buttons["강의 1.pdf"].waitForExistence(timeout: 5))

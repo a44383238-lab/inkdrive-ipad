@@ -8,10 +8,12 @@ struct LibraryEntry: Identifiable {
     var id: String { path }
 }
 struct OpenDocument: Identifiable { let id = UUID(); let path: String; let externalURL: URL? }
-enum LibraryScreen { case library, today, settings }
+enum LibraryScreen { case library, today, campus, settings }
 
 @MainActor final class NativeLibraryStore: ObservableObject {
     let repository = LibraryRepository()
+    lazy var campus = CampusSync(repository: repository)
+    @Published var material: MaterialDocument?
     @Published var screen = LibraryScreen.library
     @Published var path = ""
     @Published var entries: [LibraryEntry] = []
@@ -96,7 +98,30 @@ enum LibraryScreen { case library, today, settings }
     func open(_ entry: LibraryEntry) {
         if entry.directory { navigate(entry.path) }
         else if entry.path.lowercased().hasSuffix(".pdf") { document = OpenDocument(path: entry.path, externalURL: nil) }
-        else {
+        else if !["md", "txt", "json", "csv"].contains(URL(fileURLWithPath: entry.path).pathExtension.lowercased()) {
+            do {
+                let scope = try repository.access(), url = try FileNames.child(entry.path, in: scope.url)
+                if url.pathExtension.lowercased() == "pptx" {
+                    let hash = try FileHasher.digest(url), folder = scope.url.appendingPathComponent(".inkdrive/previews/\(hash)")
+                    let preview = folder.appendingPathComponent("preview.pdf")
+                    if let bytes = try? Data(contentsOf: folder.appendingPathComponent("manifest.json")),
+                       let metadata = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+                       metadata["sourceSHA256"] as? String == hash, let previewHash = metadata["previewSHA256"] as? String,
+                       (try? FileHasher.digest(preview)) == previewHash,
+                       let width = metadata["widthEMU"] as? Double, let height = metadata["heightEMU"] as? Double {
+                        let notebook = folder.appendingPathComponent("notebook.pdf")
+                        if !FileManager.default.fileExists(atPath: notebook.path) { try FileManager.default.copyItem(at: preview, to: notebook) }
+                        var adapter = DocumentAdapter(kind: "pptx", originalPath: entry.path, originalSHA256: hash, width: width, height: height)
+                        adapter.documentID = (metadata["documentId"] as? String).flatMap(UUID.init(uuidString:))
+                        adapter.pageIDs = (metadata["pageIDs"] as? [String])?.compactMap(UUID.init(uuidString:))
+                        try JSONEncoder().encode(adapter).write(to: URL(fileURLWithPath: notebook.path + ".adapter.json"), options: .atomic)
+                        document = OpenDocument(path: ".inkdrive/previews/\(hash)/notebook.pdf", externalURL: nil); return
+                    }
+                }
+                material = MaterialDocument(url: url, scope: scope)
+            }
+            catch { message = error.localizedDescription }
+        } else {
             do { textPreview = TextPreview(title: entry.name, text: try repository.readText(entry.path)) }
             catch { message = error.localizedDescription }
         }

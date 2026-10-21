@@ -8,7 +8,7 @@ struct NativeIcon: View {
     let name: String
     var size: CGFloat = 22
     var body: some View {
-        Group { if let image = InkIcons.image(name) { Image(uiImage: image).resizable().scaledToFit() } }
+        Group { if let image = InkIcons.image(name) { Image(uiImage: image).resizable().scaledToFit() } else { Image(systemName: name).resizable().scaledToFit() } }
             .frame(width: size, height: size).accessibilityHidden(true)
     }
 }
@@ -33,6 +33,7 @@ struct LibraryRootView: View {
                 NativeIcon(name: "pen-tool", size: 24).foregroundStyle(.white).frame(width: 44, height: 44).background(accent, in: RoundedRectangle(cornerRadius: 15)).padding(.bottom, 22)
                 nav(.library, "book-open", "서재")
                 nav(.today, "calendar-days", "수업")
+                nav(.campus, "globe", "학교")
                 Spacer()
                 nav(.settings, "settings-2", "설정")
             }.padding(.vertical, 24).frame(width: 80).background(Color(red: 0.93, green: 0.95, blue: 0.97))
@@ -51,7 +52,7 @@ struct LibraryRootView: View {
                             .padding(14).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
                     }
                     HStack {
-                        Text(store.screen == .library ? "서재" : store.screen == .today ? "수업" : "설정").font(.system(size: 30, weight: .bold))
+                        Text(store.screen == .library ? "서재" : store.screen == .today ? "수업" : store.screen == .campus ? "학교" : "설정").font(.system(size: 30, weight: .bold))
                         Spacer()
                         if store.screen == .library {
                             IconAction(icon: "folder-plus", label: "새 폴더", disabled: !store.hasRoot) { form = CreationRequest(folder: true) }
@@ -61,6 +62,7 @@ struct LibraryRootView: View {
                     }
                     if store.screen == .library { library }
                     else if store.screen == .today { today }
+                    else if store.screen == .campus { CampusPanel(campus: store.campus) }
                     else { settings }
                 }.padding(32).frame(maxWidth: 1240, alignment: .leading).frame(maxWidth: .infinity)
             }.background(canvas)
@@ -73,7 +75,12 @@ struct LibraryRootView: View {
             NavigationStack { ScrollView { Text(value.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled).padding(24) }.navigationTitle(value.title).toolbar { ToolbarItem(placement: .topBarLeading) { Button { store.textPreview = nil } label: { NativeIcon(name: "arrow-left") }.accessibilityLabel("서재로") } } }
         }
         .fullScreenCover(item: $store.document) { document in EditorHost(store: store, document: document).ignoresSafeArea() }
-        .onChange(of: phase) { _, value in if value == .active { store.date = NativeLibraryStore.today(); store.refresh() } }
+        .sheet(item: $store.material) { document in
+            if ["html", "htm"].contains(document.url.pathExtension.lowercased()) { HTMLMaterialView(document: document, store: store) }
+            else { MaterialPreview(document: document) }
+        }
+        .onChange(of: phase) { _, value in if value == .active { store.date = NativeLibraryStore.today(); store.refresh(); if !ProcessInfo.processInfo.arguments.contains("--ui-smoke") { store.campus.checkIfDue() } } }
+        .task { if !ProcessInfo.processInfo.arguments.contains("--ui-smoke") { store.campus.checkIfDue() } }
     }
     private func nav(_ screen: LibraryScreen, _ icon: String, _ label: String) -> some View {
         Button { store.screen = screen; store.refresh() } label: {

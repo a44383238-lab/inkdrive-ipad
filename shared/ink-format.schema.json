@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:inkdrive:ink:v1",
+  "title": "InkDrive Ink Format v1 (draft)",
+  "type": "object",
+  "required": ["format", "version", "documentId", "sourceRevision", "inkRevision", "createdAt", "updatedAt", "layers", "pages"],
+  "properties": {
+    "format": {"const": "inkdrive.ink"}, "version": {"const": 1},
+    "documentId": {"$ref": "#/$defs/uuid"}, "sourceRevision": {"$ref": "#/$defs/sha256"},
+    "previewRevision": {"$ref": "#/$defs/sha256"},
+    "inkRevision": {"type": "integer", "minimum": 1},
+    "parentRevision": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+    "createdAt": {"$ref": "#/$defs/time"}, "updatedAt": {"$ref": "#/$defs/time"},
+    "layers": {"type": "array", "minItems": 1, "maxItems": 100, "items": {"type": "object", "required": ["id", "name", "visible"], "properties": {
+      "id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$"}, "name": {"type": "string", "maxLength": 128}, "visible": {"type": "boolean"}
+    }}},
+    "pages": {"type": "array", "minItems": 1, "maxItems": 10000, "items": {"$ref": "#/$defs/page"}}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-fA-F]{64}$"},
+    "time": {"type": "string", "format": "date-time", "pattern": "Z$"},
+    "number": {"type": "number", "minimum": -1000000000, "maximum": 1000000000},
+    "size": {"type": "number", "minimum": 0.000001, "maximum": 1000000000},
+    "alpha": {"type": "number", "minimum": 0, "maximum": 1},
+    "sample": {"type": "object", "required": ["x", "y", "width", "height", "pressure", "opacity", "timeMs"], "properties": {
+      "x": {"$ref": "#/$defs/number"}, "y": {"$ref": "#/$defs/number"},
+      "width": {"$ref": "#/$defs/size"}, "height": {"$ref": "#/$defs/size"},
+      "pressure": {"type": "number", "minimum": 0, "maximum": 10}, "opacity": {"$ref": "#/$defs/alpha"},
+      "timeMs": {"type": "number", "minimum": 0, "maximum": 1000000000}
+    }},
+    "stroke": {"type": "object", "required": ["id", "layerId", "tool", "color", "opacity", "createdAt", "updatedAt", "transform", "samples"], "properties": {
+      "id": {"$ref": "#/$defs/uuid"}, "layerId": {"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$"},
+      "tool": {"enum": ["pen", "pencil", "marker"]}, "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
+      "opacity": {"$ref": "#/$defs/alpha"}, "createdAt": {"$ref": "#/$defs/time"}, "updatedAt": {"$ref": "#/$defs/time"},
+      "transform": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"$ref": "#/$defs/number"}},
+      "mask": {"type": "array", "maxItems": 100000, "items": {"type": "array", "minItems": 1, "maxItems": 7, "items": {"$ref": "#/$defs/number"}}},
+      "maskEvenOdd": {"type": "boolean"},
+      "samples": {"type": "array", "minItems": 1, "maxItems": 100000, "items": {"$ref": "#/$defs/sample"}}
+    }},
+    "page": {"type": "object", "required": ["id", "kind", "unit", "bounds", "rotation", "strokes"], "properties": {
+      "id": {"$ref": "#/$defs/uuid"}, "kind": {"enum": ["pdf", "pptx", "html-snapshot", "image"]},
+      "unit": {"enum": ["pt", "emu", "css-px", "px"]}, "rotation": {"enum": [0, 90, 180, 270]},
+      "bounds": {"type": "object", "required": ["x", "y", "width", "height"], "properties": {
+        "x": {"$ref": "#/$defs/number"}, "y": {"$ref": "#/$defs/number"},
+        "width": {"$ref": "#/$defs/size"}, "height": {"$ref": "#/$defs/size"}
+      }}, "strokes": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/stroke"}}
+    }, "allOf": [
+      {"if": {"properties": {"kind": {"const": "pdf"}}}, "then": {"properties": {"unit": {"const": "pt"}}}},
+      {"if": {"properties": {"kind": {"const": "pptx"}}}, "then": {"properties": {"unit": {"const": "emu"}}}},
+      {"if": {"properties": {"kind": {"const": "html-snapshot"}}}, "then": {"properties": {"unit": {"const": "css-px"}}}},
+      {"if": {"properties": {"kind": {"const": "image"}}}, "then": {"properties": {"unit": {"const": "px"}}}}
+    ]}
+  },
+  "$comment": "Cross-field identity, ordering, mask command arity and budgets are checked by shared/ink-format.mjs. Mask commands are [0,x,y] move, [1,x,y] line, [2,cx,cy,x,y] quad, [3,c1x,c1y,c2x,c2y,x,y] cubic, [4] close in untransformed document coordinates. Variable opacity is approximated by vector capsules; PencilKit grain is retained in the native archive. previewRevision identifies a separate PDF background for PPTX/HTML source."
+}

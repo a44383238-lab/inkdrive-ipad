@@ -11,6 +11,8 @@ import PencilKit
     private var savedRevision = 0
     private var delayedSave: Task<Void, Never>?
     private var saving: Task<Void, Error>?
+    private var journal: InkJournal?
+    private var commits: InkCommitStore?
     private(set) var blocked = false
     var didChange: (() -> Void)?
     var statusChanged: ((String) -> Void)?
@@ -24,7 +26,27 @@ import PencilKit
     static func open(_ url: URL, scope: SecurityScope? = nil) async throws -> EditorSession {
         let store = CoordinatedStore(url: url, scope: scope)
         let snapshot = try await store.read()
-        return try EditorSession(model: PDFModel(data: snapshot.data), store: store, digest: snapshot.digest)
+        let journal = try InkJournal(documentURL: url)
+        let recovery = try journal.read()
+        if let recovery, recovery.expected != snapshot.digest {
+            // Preserve a conflicting recovery separately before this path is used for a new journal.
+            let backup = journal.file.deletingLastPathComponent().appendingPathComponent("conflict-\(UUID().uuidString).json")
+            try FileManager.default.copyItem(at: journal.file, to: backup)
+        }
+        let recovered = recovery?.expected == snapshot.digest ? recovery?.pdf : nil
+        let adapterURL = URL(fileURLWithPath: url.path + ".adapter.json")
+        let adapter = FileManager.default.fileExists(atPath: adapterURL.path) ? try JSONDecoder().decode(DocumentAdapter.self, from: Data(contentsOf: adapterURL)) : nil
+        let session = try EditorSession(model: PDFModel(data: recovered ?? snapshot.data, documentID: adapter?.documentID, pageIDs: adapter?.pageIDs), store: store, digest: snapshot.digest)
+        session.journal = journal
+        if let root = scope?.url, (try? root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+            let originals = root.appendingPathComponent(".inkdrive/originals/\(session.model.documentID.uuidString.lowercased())")
+            try FileManager.default.createDirectory(at: originals, withIntermediateDirectories: true)
+            let original = originals.appendingPathComponent(snapshot.digest + ".pdf")
+            if !FileManager.default.fileExists(atPath: original.path) { try snapshot.data.write(to: original, options: .withoutOverwriting) }
+            session.commits = try InkCommitStore(root: root, documentID: session.model.documentID, documentURL: url)
+        }
+        if recovered != nil { session.revision = 1 }
+        return session
     }
     func changeDrawing(pageID: UUID, to new: PKDrawing) {
         guard let record = model.pages.first(where: { $0.id == pageID }) else { return }
@@ -104,10 +126,16 @@ import PencilKit
             while self.dirty {
                 let targetRevision = self.revision
                 let bytes = try self.model.snapshot()
+                try self.journal?.write(bytes, expected: self.digest)
                 self.statusChanged?("원본 저장 중…")
                 do {
+                    try self.commits?.checkHead()
                     self.digest = try await self.store.write(bytes, expected: self.digest)
                     self.savedRevision = targetRevision
+                    // Keep recovery until both normal PDF and the independent commit are durable.
+                    try self.journal?.write(bytes, expected: self.digest)
+                    try self.commits?.publish(PDFModel(data: bytes), fileBytes: bytes)
+                    if self.revision == targetRevision { try self.journal?.clear() }
                 } catch {
                     if let ink = error as? InkError, case .conflict = ink { self.blocked = true }
                     throw error

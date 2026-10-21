@@ -1,0 +1,10 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+import { makePDF, makeInk } from '../windows/reference/fixture.mjs';
+import { validateInk, renderPageSVG } from '../shared/ink-format.mjs';
+const directory = resolve(process.argv[2]); await mkdir(directory, { recursive: true });
+const pdf = makePDF(), ink = validateInk(makeInk(pdf));
+await writeFile(join(directory, 'InkDrive2_합성_100페이지.pdf'), pdf);
+await writeFile(join(directory, 'InkDrive2_공통필기_예제.json'), JSON.stringify(ink, null, 2));
+await writeFile(join(directory, 'InkDrive2_벡터필기.svg'), renderPageSVG(ink, ink.pages[0].id));
+console.log(JSON.stringify({ pages: ink.pages.length, sourceBytes: pdf.length, sourceRevision: ink.sourceRevision }));

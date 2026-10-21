@@ -41,6 +41,9 @@ import UIKit
         let scope = try repository.access()
         let filename = "\(lesson.date)_\(UUID().uuidString).m4a"
         let relative = "Recordings/" + filename
+        var lesson = lesson
+        var timeline = lesson.recordingTimeline ?? [:]
+        timeline[relative] = ISO8601DateFormatter().string(from: Date()); lesson.recordingTimeline = timeline
         let destination = try RecordingDrafts.url(filename)
         let audio = AVAudioSession.sharedInstance()
         var didBegin = false
@@ -90,6 +93,8 @@ import UIKit
             _ = try repository.publishRecordingDraft(pending)
             // Reload before append: recording can outlive subject/title updates from the library.
             if let latest = try repository.lessons(date: lesson.date).first(where: { $0.id == lesson.id }) { lesson = latest }
+            lesson.recordingTimeline = (lesson.recordingTimeline ?? [:]).merging(pending.lesson.recordingTimeline ?? [:]) { _, new in new }
+            lesson.documentID = pending.lesson.documentID ?? lesson.documentID
             if !lesson.recordings.contains(relative) { lesson.recordings.append(relative) }
             try repository.saveLesson(lesson)
             try repository.clearPendingRecording()
@@ -105,6 +110,8 @@ import UIKit
         guard audio.duration > 0 else { throw InkError.unavailable }
         _ = try repository.publishRecordingDraft(pending)
         var lesson = try repository.lessons(date: pending.lesson.date).first(where: { $0.id == pending.lesson.id }) ?? pending.lesson
+        lesson.recordingTimeline = (lesson.recordingTimeline ?? [:]).merging(pending.lesson.recordingTimeline ?? [:]) { _, new in new }
+        lesson.documentID = pending.lesson.documentID ?? lesson.documentID
         if !lesson.recordings.contains(pending.relative) { lesson.recordings.append(pending.relative) }
         try repository.saveLesson(lesson); try repository.clearPendingRecording(); lastError = nil
     }
