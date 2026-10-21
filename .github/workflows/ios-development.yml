@@ -39,7 +39,7 @@ jobs:
           xcodebuild test -scheme InkDriveCore -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath ../../../build/core-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../../../build/native-tests.log
           xcrun xcresulttool export attachments --path ../../../build/core-tests/Logs/Test/*.xcresult --output-path ../../../build/native-attachments
       - name: Standalone app interaction tests
-        timeout-minutes: 12
+        timeout-minutes: 18
         run: |
           set -o pipefail
           DEVICE=$(python3 scripts/select-ipad-simulator.py)

@@ -16,6 +16,9 @@ final class PDFModel {
     let documentID: UUID
     let needsIdentityPersistence: Bool
     private(set) var pages: [NotebookPage]
+    // PDFKit pages retain a relationship with their source document. Keep inserted
+    // vector templates alive, including pages temporarily removed by undo/redo.
+    private var insertedPageSources: [PDFDocument] = []
     init(data: Data, documentID: UUID? = nil, pageIDs: [UUID]? = nil) throws {
         guard let document = PDFDocument(data: data) else { throw InkError.invalidPDF }
         guard !document.isLocked else { throw InkError.locked }
@@ -69,9 +72,10 @@ final class PDFModel {
     }
     @discardableResult func insertBlank(at index: Int, template: PaperTemplate) throws -> NotebookPage {
         let data = Self.blank(template: template)
-        guard let page = PDFDocument(data: data)?.page(at: 0)?.copy() as? PDFPage else { throw InkError.serialization }
+        guard let source = PDFDocument(data: data), let page = source.page(at: 0) else { throw InkError.serialization }
         let record = NotebookPage(page: page)
         try insert(record, at: index)
+        insertedPageSources.append(source)
         return record
     }
     func insert(_ record: NotebookPage, at index: Int) throws {

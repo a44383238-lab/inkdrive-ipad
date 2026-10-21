@@ -32,3 +32,6 @@ Architecture: SwiftUI library, UIKit/PDFKit/PencilKit editor. Execute inline. Pr
 - Review: one read-only whole-change review found rollback, catalog error handling, adapter remap and delayed playback defects; all four addressed before final validation.
 - Screenshot correction: application-only rotated snapshots clipped the view. Final UI capture waits for landscape after launch and captures the entire display.
 - Final source adds whole-page initial fit with preserved manual zoom, tool-family controls, fine width steps and non-overlapping palette targets. Validation pending; do not label the final IPA verified until this run completes.
+
+- 2026-10-22: a new color-content regression failed on 0d7cb87: template direct rendering was yellow, but inserted page pageRef was nil and saved/preview background was white. Retain the template PDFDocument and insert its backed page rather than a copy out of a temporary source. Preserve vector paper and test direct/inserted/reopened/preview colors. UI scenario now also opens the inserted yellow page.
+- Cold simulator/UI startup exceeded the optional macOS26 job's 12-minute UI-step limit once; increase the UI step allowance to 18 minutes without skipping checks. Standard macOS15 integrated validation on 24aeaa1 passed.
