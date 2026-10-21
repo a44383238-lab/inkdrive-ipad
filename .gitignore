@@ -18,3 +18,5 @@ build/
 !/.eas/build/
 !/.eas/build/**
 native/InkDrive.xcodeproj/
+output/playwright/
+.playwright-cli/
