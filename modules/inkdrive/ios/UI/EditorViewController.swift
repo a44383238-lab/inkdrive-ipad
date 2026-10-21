@@ -493,6 +493,22 @@ import AVFoundation
             else { UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) { self.tools.layoutIfNeeded() } }
             UISelectionFeedbackGenerator().selectionChanged()
         case .ended, .cancelled, .failed:
+            if gesture.state == .ended {
+                // Never throttle the final drop. A quick last crossing can occur less than
+                // 100ms after the previous animated move and would otherwise stop one slot early.
+                let point = gesture.location(in: tools)
+                let coordinate = toolbarVertical ? point.y : point.x
+                let target = toolbar.entries.indices.min { a, b in
+                    guard let av = toolButtons[toolbar.entries[a].id], let bv = toolButtons[toolbar.entries[b].id] else { return a < b }
+                    return abs((toolbarVertical ? av.frame.midY : av.frame.midX) - coordinate) < abs((toolbarVertical ? bv.frame.midY : bv.frame.midX) - coordinate)
+                }
+                if let target, toolbar.entries[target].id != id {
+                    toolbar.move(id, to: target)
+                    tools.removeArrangedSubview(button); tools.insertArrangedSubview(button, at: target)
+                    tools.accessibilityElements = toolbar.entries.compactMap { toolButtons[$0.id] }
+                    tools.layoutIfNeeded()
+                }
+            }
             button.alpha = 1; button.transform = .identity; movingTool = nil; movingButton = nil
             if let preview = movingPreview {
                 let target = button.convert(button.bounds, to: floating)
