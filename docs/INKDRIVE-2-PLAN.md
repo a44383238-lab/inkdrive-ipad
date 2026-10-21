@@ -1,5 +1,7 @@
 # InkDrive 2.0 — 소스 감사와 실행 설계
 
+> 이 문서는 초기 감사 당시의 이력이다. 이후 사용자가 남은 구현과 IPA 빌드를 명시적으로 요청했다. 최신 실제 구현/검증은 [INKDRIVE-2-IMPLEMENTATION.md](INKDRIVE-2-IMPLEMENTATION.md), [CAMPUS-SYNC.md](CAMPUS-SYNC.md), [STATUS.md](STATUS.md)를 기준으로 한다.
+
 작성: 2026-10-21 (한국 시간). 기준: main / affe50e. 요청 지시서의 Phase 0–8은 최종 목표이며 이 문서는 완료 보고가 아니다. Phase의 성공 기준을 만족하면 추가 승인 없이 다음 작업으로 진행한다. GitHub Actions, macOS 빌드 및 IPA 생성은 별도 명시 요청 전까지 실행하지 않는다.
 
 ## 1. 현재 실제 상태와 검증

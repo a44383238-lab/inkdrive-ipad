@@ -14,7 +14,13 @@
 
 ## 완료 판정과 남은 확인
 
-로컬 JavaScript 회귀: 39 pass, 0 fail, 0 skipped. 파일 보존, 신규/동일/수정 자료, 학기 전환, 인증 만료, 외부 redirect/cookie 격리, RSA 재생성, native 호환 commit, rename/cache를 합성 입력으로 확인했다. 실제 학교 신규 업로드나 실기기 녹음 검증으로 확대 해석하지 않는다.
+로컬 JavaScript 회귀: 43 pass, 0 fail, 0 skipped. 파일 보존, 신규/동일/수정 자료, 학기 전환, 인증 만료, 외부 redirect/cookie 격리, RSA 재생성, native 호환 commit, rename/cache, 한글 Content-Disposition, 첨부 확장자, 사이트 아이콘 제외, 실패 자료 뒤의 나머지 수집과 재시도를 확인했다. 실제 학교 신규 업로드나 실기기 녹음 검증으로 확대 해석하지 않는다.
+
+실제 Windows 앱 전용 로그인으로 현재 학기 7과목의 자료 93개(414,996,656 bytes)를 iCloud로 수집하고 93개 전부 SHA256을 다시 대조했다. 첫 수집에서 섞인 사이트 아이콘 35개는 삭제하지 않고 숨김 복구 폴더로 옮겼고, 최초의 깨진 이름 22개는 파일 해시를 확인한 후 이름만 복구했다. 실제 PPTX 두 개(101/83 slides)의 원본과 PowerPoint PDF 미리보기를 보관했다. 4:3, 16:9, 세로형 합성 PPTX도 별도로 원본 해시/종횡비를 확인했다. iCloud가 상태 파일 교체를 잠깐 막는 경우를 위해 제한된 재시도를 넣었다.
+
+Swift 회귀 37개는 macOS CI에서 통과했다. 최초 앱 UI 실패는 crash report의 `libswiftWebKit.dylib` 누락으로 확인했다. [WebKit 공식 버그 293831](https://bugs.webkit.org/show_bug.cgi?id=293831)의 우회 방법에 따라 **시뮬레이터 앱 빌드 명령만** minimum 18.4를 지정했다. 실기기 arm64 IPA의 minimum 17은 유지한다. XcodeGen의 프로젝트 수준 조건부 값은 대상 설정에 가려졌으므로 명령 수준으로 적용했다. 이 우회는 iOS17 실기기 동작 검증을 대신하지 않는다.
+
+Windows 세션은 사용자별 DPAPI 암호화 파일로 로컬에 복원하며, 로그아웃 시 지운다. 학교 서버가 만료한 세션을 영구 연장하지 않는다. PLATO 직접 로그인은 현재 학지시 통합로그인까지 만들어주지 않는 것을 실제 화면에서 확인했다. 학교가 제공하는 SSO로 한 번 인증 후 서비스별 세션을 발급받는 연결은 추가 검증이 필요하다. 계정 ID가 같은 것을 토큰이 같은 것으로 처리하지 않는다.
 
 Swift 신규 exporter, journal/commit, adapter, 학교 parser 테스트 및 앱 UI 회귀는 승인된 macOS CI에서 실행한다. Windows 실행 화면, PowerPoint 4:3/16:9/custom 비율과 원본 해시, native 출력과 공통 renderer의 대조 결과를 빌드 후 기록한다.
 

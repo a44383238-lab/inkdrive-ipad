@@ -100,7 +100,7 @@ struct LibraryRootView: View {
                         Button(store.rootName ?? "InkDrive") { store.navigate("") }.font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                         ForEach(Array(store.breadcrumbs.enumerated()), id: \.offset) { index, part in
                             NativeIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
-                            Button(part) { store.navigate(store.breadcrumbs.prefix(index + 1).joined(separator: "/")) }.font(.subheadline).frame(minHeight: 44)
+                            Button(LibraryEntry.folderTitle(part)) { store.navigate(store.breadcrumbs.prefix(index + 1).joined(separator: "/")) }.font(.subheadline).frame(minHeight: 44)
                         }
                     }
                 }
@@ -113,9 +113,9 @@ struct LibraryRootView: View {
                         VStack(spacing: 14) {
                             if entry.directory { folderArt(size: 108) }
                             else { NativeIcon(name: "file-text", size: 42).foregroundStyle(accent.opacity(0.6)).frame(width: 68, height: 86).background(canvas, in: RoundedRectangle(cornerRadius: 7)).overlay(RoundedRectangle(cornerRadius: 7).stroke(ink.opacity(0.08))) }
-                            Text(entry.name.replacingOccurrences(of: ".pdf", with: "", options: .caseInsensitive)).font(.system(size: 13, weight: .medium)).lineLimit(2).multilineTextAlignment(.center).frame(height: 36)
+                            Text(entry.displayName.replacingOccurrences(of: ".pdf", with: "", options: .caseInsensitive)).font(.system(size: 13, weight: .medium)).lineLimit(2).multilineTextAlignment(.center).frame(height: 36)
                         }.frame(maxWidth: .infinity).padding(.vertical, 16).padding(.horizontal, 8).background(.white, in: RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).stroke(ink.opacity(0.07)))
-                    }.buttonStyle(.plain).accessibilityLabel(entry.name)
+                    }.buttonStyle(.plain).accessibilityLabel(entry.displayName)
                 }
             }
             if store.filtered.isEmpty { Text(store.query.isEmpty ? "비어 있어요" : "검색 결과 없음").font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 180) }

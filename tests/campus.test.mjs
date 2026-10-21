@@ -67,3 +67,15 @@ test('download interrupted before completion never publishes an attachment or a 
   const state=JSON.parse(await readFile(join(root,'.inkdrive','campus','devices','test.json'),'utf8'));assert.equal(state.lastChecked,undefined);assert.deepEqual(state.attachments,{});
   assert.deepEqual(await readdir(join(root,'2026-0020','통계_IE1_066')),['.campus-course.json']);
 });
+test('one unavailable material does not prevent later materials from downloading, and the failed run retries next time',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'inkdrive-resume-'));t.after(()=>rm(root,{recursive:true,force:true}));let unavailable=true;
+  const client={html:async url=>url==='https://plato.pusan.ac.kr/'?`{"sesskey":"memory"}`:url.includes('/course/')?`<a href='/mod/ubfile/view.php?id=3'>첫째</a><a href='/mod/ubfile/view.php?id=4'>둘째</a>`:'',
+    request:async url=>{
+      if(url.includes('/lib/ajax/'))return Response.json([{error:false,data:{courses:[{id:2,fullname:'통계',shortname:'통계 (2026-0020, IE1_066)'}]}}]);
+      if(url.includes('id=3')&&unavailable)throw new Error('network interrupted');
+      return new Response('%PDF-'+(url.includes('id=3')?'first':'second'),{headers:{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="lecture.pdf"'}});
+    }};
+  const options={root,client,deviceId:'test'};const first=await syncCampus(options);assert.equal(first.downloaded,1);assert.equal(first.failed,1);assert.equal(first.lastChecked,undefined);
+  unavailable=false;const second=await syncCampus(options);assert.equal(second.downloaded,1);assert.equal(second.failed,0);assert.ok(second.lastChecked);
+  assert.equal((await readdir(join(root,'2026-0020','통계_IE1_066','강의자료'))).length,2);
+});

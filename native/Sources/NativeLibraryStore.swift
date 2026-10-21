@@ -6,6 +6,13 @@ struct LibraryEntry: Identifiable {
     let path: String
     let directory: Bool
     var id: String { path }
+    var displayName: String { directory ? Self.folderTitle(name) : name }
+    static func folderTitle(_ name: String) -> String {
+        if name.range(of: "^20[0-9]{2}-(0010|0020)$", options: .regularExpression) != nil {
+            return String(name.prefix(4)) + " · " + (name.hasSuffix("0010") ? "1학기" : "2학기")
+        }
+        return name.replacingOccurrences(of: "_[A-Z]{2}[0-9]+_([0-9]{3})$", with: " ($1)", options: .regularExpression)
+    }
 }
 struct OpenDocument: Identifiable { let id = UUID(); let path: String; let externalURL: URL? }
 enum LibraryScreen { case library, today, campus, settings }
