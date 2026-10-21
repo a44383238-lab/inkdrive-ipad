@@ -55,6 +55,37 @@ import PencilKit
         XCTAssertFalse(scroll.bounces)
     }
     private func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(descendants) }
+    func testDefaultPenUsesSolidBlackMonolineInk() throws {
+        let settings = ToolSettings()
+        let pen = try XCTUnwrap(settings.nativeTool(.pen) as? PKInkingTool)
+        XCTAssertEqual(pen.inkType, .monoline)
+        XCTAssertEqual(pen.color.hexString, "#000000")
+        XCTAssertEqual(pen.color.cgColor.alpha, 1)
+    }
+    func testPaperInkDoesNotInheritDarkInterface() throws {
+        let editor = try editor()
+        let overlay = PageOverlay(record: editor.session.model.pages[0], editor: editor)
+        XCTAssertEqual(overlay.canvas.overrideUserInterfaceStyle, .light)
+    }
+    func testActiveStrokeDoesNotSerializeOrRefreshDocumentUntilLift() throws {
+        let editor = try editor(), record = editor.session.model.pages[0]
+        let overlay = PageOverlay(record: record, editor: editor)
+        var changes = 0; editor.session.didChange = { changes += 1 }
+        let points = [CGPoint(x: 30, y: 30), CGPoint(x: 80, y: 80)].enumerated().map { index, point in
+            PKStrokePoint(location: point, timeOffset: Double(index) * 0.1, size: CGSize(width: 3, height: 3), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)
+        }
+        overlay.canvasViewDidBeginUsingTool(overlay.canvas)
+        overlay.canvas.drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.monoline, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))])
+        overlay.canvasViewDrawingDidChange(overlay.canvas)
+        XCTAssertEqual(changes, 0)
+        XCTAssertTrue(record.drawing.strokes.isEmpty)
+        overlay.canvasViewDidEndUsingTool(overlay.canvas)
+        XCTAssertEqual(record.drawing.strokes.count, 1)
+        XCTAssertEqual(changes, 1)
+        overlay.commit()
+        editor.session.history.undo()
+        XCTAssertTrue(record.drawing.strokes.isEmpty)
+    }
     func testCompactToolbarHasMatchingIconsAndVisibleRecordButton() throws {
         let editor = try editor()
         let buttons = descendants(editor.view).compactMap { $0 as? UIButton }
