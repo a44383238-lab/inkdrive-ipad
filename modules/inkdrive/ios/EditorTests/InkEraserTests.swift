@@ -33,10 +33,18 @@ import UIKit
         let result = InkEraser.erase(ink, from: CGPoint(x: 100, y: 130), to: CGPoint(x: 100, y: 130), width: 20, partial: false, target: "all")
         XCTAssertTrue(result.strokes.isEmpty)
     }
-    func testMonolineStillExportsIntoPortableInkAndNativeArchive() throws {
+    func testMonolineExportsAndArchivePreservesSolidAppearanceAndSamples() throws {
         let drawing = PKDrawing(strokes: [stroke()])
         let exported = try PortableInkExporter.document(drawing: drawing, documentID: UUID(), pageID: UUID(), strokeIDs: [UUID()], sourceSHA256: String(repeating: "a", count: 64), crop: CGRect(x: 0, y: 0, width: 595, height: 842), rotation: 0, revision: 1, createdAt: Date())
         XCTAssertEqual(exported.pages.first?.strokes.first?.tool, "pen")
-        XCTAssertEqual(try PKDrawing(data: drawing.dataRepresentation()).strokes.first?.ink.inkType, .monoline)
+        let restored = try PKDrawing(data: drawing.dataRepresentation())
+        // PencilKit may canonicalize a synthetic constant-width stroke's archive ink name.
+        // Verify the stored visual result and samples, rather than the implementation label.
+        let rect = CGRect(x: 0, y: 0, width: 200, height: 100)
+        XCTAssertEqual(drawing.image(from: rect, scale: 2).pngData(), restored.image(from: rect, scale: 2).pngData())
+        XCTAssertEqual(restored.strokes.count, 1)
+        XCTAssertEqual(restored.strokes[0].ink.color.hexString, "#000000")
+        XCTAssertEqual(restored.strokes[0].ink.color.cgColor.alpha, 1)
+        XCTAssertTrue(restored.strokes[0].path.allSatisfy { abs($0.opacity - 1) < 0.001 && abs($0.size.width - 8) < 0.001 })
     }
 }

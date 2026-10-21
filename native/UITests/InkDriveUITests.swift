@@ -61,11 +61,14 @@ final class InkDriveUITests: XCTestCase {
         XCTAssertTrue(app.buttons["한 페이지씩"].waitForExistence(timeout: 4))
         attach("Unified view settings", app)
         app.buttons["한 페이지씩"].tap()
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.72, dy: 0.6)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.6)))
+        app.swipeRight()
+        XCTAssertTrue(app.staticTexts["1/2 페이지"].waitForExistence(timeout: 4))
+        app.swipeLeft()
+        XCTAssertTrue(app.staticTexts["2/2 페이지"].waitForExistence(timeout: 4))
         app.buttons["도구 추가"].tap()
         XCTAssertTrue(app.buttons["panel-action-펜"].waitForExistence(timeout: 4))
         attach("Add another pen", app)
-        // The custom menu and toolbar both contain pens; choose the menu's last matching button.
+        // The add menu always offers another pen, even when pens already exist.
         app.buttons["panel-action-펜"].tap()
         XCTAssertTrue(app.staticTexts["기본 색상"].waitForExistence(timeout: 4))
         app.buttons["색상 #E60012"].tap()
@@ -108,6 +111,13 @@ final class InkDriveUITests: XCTestCase {
         let fixed = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "스냅샷_")).firstMatch
         XCTAssertTrue(fixed.waitForExistence(timeout: 8)); fixed.tap()
         XCTAssertTrue(app.buttons["펜"].waitForExistence(timeout: 10)); attach("HTML snapshot editor", app)
+        app.terminate(); app.launch()
+        XCTAssertTrue(app.buttons["통계학"].waitForExistence(timeout: 10)); app.buttons["통계학"].tap()
+        app.buttons["강의 1.pdf"].tap()
+        XCTAssertTrue(app.buttons["문서 메뉴"].waitForExistence(timeout: 10))
+        let restoredItems = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "toolbar-item-"))
+        XCTAssertEqual(restoredItems.element(boundBy: 0).identifier, movedID)
+        attach("Toolbar order restored after relaunch", app)
     }
     private func attach(_ name: String, _ app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
