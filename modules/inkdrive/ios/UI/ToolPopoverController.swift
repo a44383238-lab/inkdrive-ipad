@@ -3,6 +3,7 @@ import UIKit
 @MainActor final class ToolPopoverController: UIViewController {
     private let tool: EditorTool
     private var settings: ToolSettings
+    private weak var colorCodeField: UITextField?
     private let changed: (ToolSettings) -> Void
     var removeTool: (() -> Void)?
     var duplicateTool: (() -> Void)?
@@ -45,7 +46,7 @@ import UIKit
                 swatches.addArrangedSubview(dot)
             }
             stack.addArrangedSubview(swatches)
-            let colorCode = UITextField(); colorCode.text = settings.color
+            let colorCode = UITextField(); colorCode.text = settings.color; colorCodeField = colorCode
             colorCode.font = .monospacedSystemFont(ofSize: 12, weight: .medium); colorCode.textColor = InkTheme.text
             colorCode.backgroundColor = InkTheme.canvas; colorCode.layer.cornerRadius = 5
             colorCode.autocorrectionType = .no; colorCode.autocapitalizationType = .allCharacters
@@ -89,6 +90,7 @@ import UIKit
         stack.addArrangedSubview(more)
     }
     private func publish() {
+        colorCodeField?.text = settings.color
         var colors = UserDefaults.standard.stringArray(forKey: "inkdrive.recent-colors") ?? []
         colors.removeAll { $0 == settings.color }; colors.insert(settings.color, at: 0)
         UserDefaults.standard.set(Array(colors.prefix(12)), forKey: "inkdrive.recent-colors")
