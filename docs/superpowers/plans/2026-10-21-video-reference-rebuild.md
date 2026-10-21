@@ -14,9 +14,9 @@ Architecture: SwiftUI library, UIKit/PDFKit/PencilKit editor. Execute inline. Pr
 
 ## Tasks
 - [x] Review every second using timestamped contact sheets; inspect key states at larger resolution.
-- [ ] Replace library layout, thumbnails, color folders, recent/favorites and creation access.
-- [ ] Rebuild compact editor chrome, pen nibs, movable/rotatable toolbar and anchored tool panels.
-- [ ] Integrate recording popover, page scrubber/preview, display controls and page browser.
+- [x] Replace library layout, thumbnails, color folders, recent/favorites and creation access.
+- [x] Rebuild compact editor chrome, pen nibs, movable/rotatable toolbar and anchored tool panels.
+- [x] Integrate recording popover, page scrubber/preview, display controls and page browser.
 - [ ] Update meaningful UI scenarios, run device build + simulator checks, inspect screenshots against reference, deliver IPA.
 
 ## Decisions
@@ -24,3 +24,11 @@ Architecture: SwiftUI library, UIKit/PDFKit/PencilKit editor. Execute inline. Pr
 - Existing handwriting document model, journals and iCloud source originals remain intact. Do not replace persistence with screenshot-based rendering.
 - Keep InkDrive identity and original icon drawings; reproduce visible arrangement and interactions rather than importing another app's binary assets.
 - Preserve unrelated ASR edits already present in the shared checkout.
+
+
+## Verification ledger
+- Original integrated source (7fefef6): device compile, 39 Swift checks and complete app scenario passed (39580774422).
+- Move/adapter/preview hardening (bbbe788): device compile, 43 Swift checks and complete app scenario passed (39582210084).
+- Review: one read-only whole-change review found rollback, catalog error handling, adapter remap and delayed playback defects; all four addressed before final validation.
+- Screenshot correction: application-only rotated snapshots clipped the view. Final UI capture waits for landscape after launch and captures the entire display.
+- Final source adds whole-page initial fit with preserved manual zoom, tool-family controls, fine width steps and non-overlapping palette targets. Validation pending; do not label the final IPA verified until this run completes.
