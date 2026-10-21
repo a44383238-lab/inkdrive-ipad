@@ -75,4 +75,34 @@ final class PDFModelTests: XCTestCase {
         XCTAssertEqual(reopened.pages.map(\.id), [second, first])
         XCTAssertTrue(reopened.pages.allSatisfy { $0.page.annotations.allSatisfy { $0.userName != "InkDrive.PageID.v1" } })
     }
+    @MainActor func testInsertedYellowPagePreservesBackgroundAndPreviewAfterSave() throws {
+        func blue(_ page: PDFPage) throws -> UInt8 {
+            let reference = try XCTUnwrap(page.pageRef)
+            var pixel = [UInt8](repeating: 255, count: 4)
+            try pixel.withUnsafeMutableBytes { buffer in
+                let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.translateBy(x: -300, y: -410); context.drawPDFPage(reference)
+            }
+            return pixel[2]
+        }
+        let direct = try XCTUnwrap(PDFDocument(data: PDFModel.blank(template: .yellowRuled)))
+        XCTAssertLessThan(try blue(XCTUnwrap(direct.page(at: 0))), 220, "Template itself must be yellow")
+        let model = try PDFModel(data: PDFModel.blank(template: .plain))
+        let page = try model.insertBlank(at: 1, template: .yellowRuled)
+        XCTAssertLessThan(try blue(page.page), 220, "Insertion must retain vector page contents")
+        let bytes = try model.snapshot()
+        let attachment = XCTAttachment(data: bytes, uniformTypeIdentifier: "com.adobe.pdf"); attachment.name = "Inserted yellow paper"; attachment.lifetime = .keepAlways; add(attachment)
+        let reopened = try PDFModel(data: bytes)
+        XCTAssertLessThan(try blue(reopened.pages[1].page), 220, "Background must survive saving")
+        let preview = NotebookPreview.image(reopened.pages[1], size: CGSize(width: 156, height: 212))
+        let cg = try XCTUnwrap(preview.cgImage)
+        var pixel = [UInt8](repeating: 255, count: 4)
+        try pixel.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.translateBy(x: -CGFloat(cg.width) / 2, y: -CGFloat(cg.height) / 2); context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        }
+        XCTAssertLessThan(pixel[2], 220, "Thumbnail must show the actual yellow page")
+        withExtendedLifetime(direct) {}
+    }
+
 }
