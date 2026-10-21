@@ -14,7 +14,7 @@ struct EditorHost: UIViewControllerRepresentable {
     init(store: NativeLibraryStore, document: OpenDocument) { self.store = store; self.document = document; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = UIColor(hex: "#F8F9FC")
+        super.viewDidLoad(); view.backgroundColor = InkTheme.canvas; view.tintColor = InkTheme.accent; overrideUserInterfaceStyle = .dark
         let spinner = UIActivityIndicatorView(style: .large); spinner.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(spinner)
         NSLayoutConstraint.activate([spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)]); spinner.startAnimating()
     }

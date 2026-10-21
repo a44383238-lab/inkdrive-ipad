@@ -90,7 +90,10 @@ enum LibraryScreen { case library, today, campus, settings }
     private func poll() {
         let service = RecordingService.shared
         let ended = activeRecording && !service.active
-        activeRecording = service.active; elapsed = service.seconds
+        // @Published emits even for equal values. Idle polling must not rebuild the whole library.
+        let nextActive = service.active, nextElapsed = floor(service.seconds)
+        if activeRecording != nextActive { activeRecording = nextActive }
+        if elapsed != nextElapsed { elapsed = nextElapsed }
         if let error = service.lastError, error != lastRecordingError { message = error; lastRecordingError = error }
         if ended { refresh() }
     }
