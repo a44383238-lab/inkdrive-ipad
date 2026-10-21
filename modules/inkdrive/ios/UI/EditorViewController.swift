@@ -386,6 +386,11 @@ import AVFoundation
         stack.addArrangedSubview(handle)
         toolScroll.showsHorizontalScrollIndicator = false
         toolScroll.showsVerticalScrollIndicator = false
+        toolScroll.delaysContentTouches = false
+        let reorder = UILongPressGestureRecognizer(target: self, action: #selector(reorderTool(_:)))
+        reorder.minimumPressDuration = 0.35
+        toolScroll.addGestureRecognizer(reorder)
+        toolScroll.panGestureRecognizer.require(toFail: reorder)
         tools.axis = toolbarVertical ? .vertical : .horizontal; tools.spacing = 0; tools.translatesAutoresizingMaskIntoConstraints = false
         toolScroll.addSubview(tools)
         NSLayoutConstraint.activate([tools.leadingAnchor.constraint(equalTo: toolScroll.contentLayoutGuide.leadingAnchor),
@@ -413,10 +418,6 @@ import AVFoundation
                 if self.toolbar.selected == entry.id { self.showToolPopover(from: item) }
                 else { self.selectEntry(entry.id) }
             }, for: .touchUpInside)
-            let hold = UILongPressGestureRecognizer(target: self, action: #selector(reorderTool(_:)))
-            hold.minimumPressDuration = 0.35; hold.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue), NSNumber(value: UITouch.TouchType.pencil.rawValue)]
-            item.addGestureRecognizer(hold)
-            toolScroll.panGestureRecognizer.require(toFail: hold)
             toolButtons[entry.id] = item; tools.addArrangedSubview(item)
         }
         tools.accessibilityElements = toolbar.entries.compactMap { toolButtons[$0.id] }
@@ -445,8 +446,15 @@ import AVFoundation
         updateToolAppearance(); provider.applyTool()
     }
     @objc private func reorderTool(_ gesture: UILongPressGestureRecognizer) {
-        guard let button = gesture.view as? UIButton,
-              let id = toolButtons.first(where: { $0.value === button })?.key else { return }
+        let id: UUID
+        if gesture.state == .began {
+            let point = gesture.location(in: tools)
+            guard let entry = toolbar.entries.first(where: { toolButtons[$0.id]?.frame.contains(point) == true }) else { return }
+            id = entry.id
+        } else {
+            guard let current = movingTool else { return }; id = current
+        }
+        guard let button = toolButtons[id] else { return }
         switch gesture.state {
         case .began:
             movingTool = id; movingButton = button
