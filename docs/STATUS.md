@@ -1,41 +1,34 @@
-# InkDrive 0.5.0 (5) — verified integrated development build
+# InkDrive 0.6.0 (6) — video reference development build
 
-2026-10-21. Standalone Swift app. No Expo, Metro, development launcher or notebook development server is required to open the iPad app.
+Verified 2026-10-22 (Asia/Seoul). Native Swift iPad app; no Expo/Metro development server required.
 
-## Delivered build
+## Delivered IPA
 
-- [Successful build and UI tests](https://github.com/a44383238-lab/inkdrive-ipad/actions/runs/39550880481), source `1b164917540072e75b22b73fc41ddd7d70392446`.
-- `InkDrive-Swift-development.ipa`: 1,248,211 bytes; SHA256 `68bb6631d8e3fb1f6ebeb78dd98264ff60ee15ecbdb1831a407736ee7279b169`.
-- Version 0.5.0 (5), bundle `app.inkdrive.notes`, minimum iOS17, arm64, unsigned for Sideloadly. ZIP CRC, platform and native modules verified.
-- The same verified file is on the Desktop as `InkDrive 개발용.ipa`. The preceding desktop IPA is preserved in outputs as a backup. Update the existing app with Sideloadly; do not delete it merely to update.
-- Windows product is `outputs/InkDrive2-Windows/InkDrive.exe`, with its required sibling files. Desktop `InkDrive.lnk` launches that product. Node.js/.NET4.8/WebView2 are required and verified on this PC.
+- Successful complete build: https://github.com/a44383238-lab/inkdrive-ipad/actions/runs/39626293547
+- App source: `09737ce7ba52e8868a5a0e68bd2c7f1b87898a47`; subsequent documentation changes do not change the IPA.
+- Version 0.6.0 (6), `app.inkdrive.notes`, arm64, minimum iOS17, unsigned for Sideloadly.
+- 1,470,426 bytes; SHA-256 `30b9974ff3b6bb495bc1aeaf33abfbbc960c9185ec904de64134a838134ad30a`.
+- Verified matching copies on Desktop and in outputs as `InkDrive 개발용.ipa`. Previous 0.5.0 IPA and report preserved in outputs. Update the existing app; deleting the app is not required.
 
-## App flow
+## Rebuilt from the video
 
-1. Select the iCloud InkDrive folder as the library root. The app remains inside this root.
-2. School login and direct HTTP collection create semester/course folders automatically. In the home grid, folders show the semester and course/section rather than internal course identifiers.
-3. Open a PDF, write with Pencil and move with fingers. A single microphone button starts/stops recording, and the adjacent recording list plays the selected saved recording with seek/speed controls.
-4. Native PKDrawing is preserved alongside vector PDF appearance and common JSON. A local recovery journal precedes coordinated PDF/commit publication. Windows reads the PDF background and common vector ink; simultaneous or incomplete commits are not silently adopted.
-5. PowerPoint originals are kept; Windows PowerPoint generates versioned PDF previews. iPad can write on the separate notebook preview using original slide EMU/page identities. HTML opens in a separate script-disabled browser and can create a fixed PDF snapshot.
-6. The Windows app directly checks school materials every 30 minutes while open and exposes 지금 확인. School collection does not invoke GPT. Active iPad checks every 30 minutes or 60 minutes in low-power mode; a terminated iPad does not run exact-time checks.
-7. Windows 수업 정리 opens the local processor. While the app is open it starts the existing local Whisper + authenticated ChatGPT CLI pipeline at 22:00 Seoul time. The laptop must be awake. Manual runs scan the recent seven days for unprocessed lessons. ChatGPT/API limits and runtime failures remain visible; no paid AI API was added.
+Charcoal library/sidebar; persistent colored folders; real PDF thumbnails; recent/favorites; selection and folder destination picker; bottom-right creation menu. Compact editor header/tabs, movable and rotatable black toolbar, original colored pen nib artwork, width values and fine 0.1px controls, anchored tool-family/color/opacity panels, presets and tool removal. Recording popover plus playback dock, ±10 seconds and speed controls. Whole-page initial fit, preserved manual zoom, finger pan/pinch without inertial drift, page scrubber with live ink previews, page overview with document sidebar, paper insertion/reorder/delete and outline/bookmark/search.
 
-## Verified results
+See [observed flow mapping](VIDEO-REFERENCE.md). Private recording/frames remain outside Git; CI screenshots use synthetic documents.
 
-- Local JavaScript suite: 43 passed, no failures/skips.
-- Final macOS CI: 25 core/integration + 12 editor/recording = 37 Swift tests, and one full app UI scenario, all passed.
-- UI scenario: home, editor, recording list, page navigator, document tabs, school controls, HTML material and fixed snapshot editor.
-- Native-export comparison: a synthetic stroke generated with the real PKDrawing API was exported by Swift. Source SHA and identity were validated. At 100/200/400%, Windows DOM endpoint error was 0px; blue-ink bounds differed from native PDF by 1px at each zoom. This is not a hardware handwriting or pencil-texture equivalence claim.
-- Real Windows school profile: seven current-semester courses, final 92 class files / 414,995,307 bytes, all 92 SHA256 values verified. Decorative site/profile icons and confirmed duplicate imports are preserved in hidden recovery storage rather than deleted. Unmodified original class files remain intact.
-- App restart retained PLATO login through a user-scoped DPAPI-protected session file. Server-expired sessions still require login.
-- Actual PPTX previews: 101 and 83 slides; the 101-slide material opened at page 100 and 400% in Windows. Synthetic 4:3, 16:9 and portrait PowerPoint previews preserved original hashes and aspect ratios.
-- The iOS18.5 simulator startup issue was traced to WebKit bug 293831. Only simulator app build invocations use minimum18.4 as the documented workaround. The device IPA remains minimum17.0.
+## Final verification
 
-## Remaining acceptance checks
+- 30 core/integration + 17 editor/recording = **47 Swift tests**, all passed.
+- Complete native application scenario passed, including toolbar orientation and family switching, recording list, page overview, inserting/opening yellow paper, document tabs, school controls, HTML material and fixed snapshot.
+- New paper regression was observed failing before the fix: copied inserted pages lost their PDF backing and saved white backgrounds. Retaining vector template documents and inserting backed pages fixed direct/inserted/reopened/preview color checks. Final UI screenshots confirm yellow paper in both the overview and editor.
+- Move regressions cover lesson references, destination collisions, descendant rejection, hidden preview adapters, unreadable catalogs and individually moved source/notebook sidecars. Partial rollback preserves local recovery details.
+- IPA ZIP CRC/receipt, native arm64 executable, bundle/version/platform and minimum OS verified. Final source symbols and absence of a JavaScript development bundle checked.
+- The optional earlier macOS26 run timed out during cold simulator startup; authoritative final validation above passed on macOS15. No failing test was skipped to publish this artifact.
 
-- PLATO live collection is verified. A single integrated SSO login producing both PLATO and student-portal sessions is not yet verified; identical student IDs do not make the service cookies interchangeable. Fresh timetable request generation still needs the separate integrated school session. The implementation and official envelope tests exist; do not describe the live timetable API as finished.
-- Assignment detail/attachments are collected. A normalized combined deadline calendar is not complete.
-- Real Apple Pencil pressure/eraser/finger movement, microphone permissions/background audio, physical iCloud two-device/offline/conflict recovery, full real-lecture AI processing and next-semester server behavior need installation/device checks. Phase8 is not complete from simulator tests alone.
-- Cross-platform pencil texture and variable-opacity compositing are approximations; native archives are retained. HWP/HWPX/ZIP collection is distinct from platform preview support. Long HTML over 18000px is rejected rather than silently truncated. Changed source material revisions do not automatically migrate older ink.
+## Preserved features and limits
 
-See [implementation details](INKDRIVE-2-IMPLEMENTATION.md) and [school synchronization](CAMPUS-SYNC.md). Older Expo instructions are historical and do not apply to this IPA.
+Native PencilKit drawing, PDF/iCloud commits, recovery journals, page/document identity and school synchronization remain. Windows helper and AI runtime were not changed by this UI rebuild; unrelated ASR edits in the shared checkout were not included.
+
+The recording has no actual handwriting strokes. Physical Pencil pressure, latency, palm rejection and microphone quality require iPad confirmation. Simulator verification does not establish exact physical equivalence to the reference app. Undisclosed store/account internals are not inferred from the video.
+
+Previous integrated backend verification is preserved in [0.5.0 history](history/STATUS-0.5.0.md), dated separately; it is not a new school-data refresh.

@@ -17,7 +17,7 @@ Architecture: SwiftUI library, UIKit/PDFKit/PencilKit editor. Execute inline. Pr
 - [x] Replace library layout, thumbnails, color folders, recent/favorites and creation access.
 - [x] Rebuild compact editor chrome, pen nibs, movable/rotatable toolbar and anchored tool panels.
 - [x] Integrate recording popover, page scrubber/preview, display controls and page browser.
-- [ ] Update meaningful UI scenarios, run device build + simulator checks, inspect screenshots against reference, deliver IPA.
+- [x] Update meaningful UI scenarios, run device build + simulator checks, inspect screenshots against reference, deliver IPA.
 
 ## Decisions
 - User's video takes precedence over generic design recommendations. UI skill search returned a marketing layout; discard it as unsuitable.
@@ -35,3 +35,5 @@ Architecture: SwiftUI library, UIKit/PDFKit/PencilKit editor. Execute inline. Pr
 
 - 2026-10-22: a new color-content regression failed on 0d7cb87: template direct rendering was yellow, but inserted page pageRef was nil and saved/preview background was white. Retain the template PDFDocument and insert its backed page rather than a copy out of a temporary source. Preserve vector paper and test direct/inserted/reopened/preview colors. UI scenario now also opens the inserted yellow page.
 - Cold simulator/UI startup exceeded the optional macOS26 job's 12-minute UI-step limit once; increase the UI step allowance to 18 minutes without skipping checks. Standard macOS15 integrated validation on 24aeaa1 passed.
+
+- Final completion: 39626293547, source 09737ce7ba52e8868a5a0e68bd2c7f1b87898a47, 47 Swift tests and full app scenario passed. Yellow paper confirmed in actual screenshots. IPA CRC/native/version/hash validated; Desktop and output copies match 30b9974ff3b6bb495bc1aeaf33abfbbc960c9185ec904de64134a838134ad30a. Comparison report created.
