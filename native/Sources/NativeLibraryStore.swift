@@ -24,6 +24,7 @@ enum LibraryScreen { case library, today, campus, settings }
     @Published var screen = LibraryScreen.library
     @Published var path = ""
     @Published var entries: [LibraryEntry] = []
+    @Published var libraryRevision = 0
     @Published var lessons: [LessonRecord] = []
     @Published var rootName: String?
     @Published var query = ""
@@ -73,6 +74,7 @@ enum LibraryScreen { case library, today, campus, settings }
     var breadcrumbs: [String] { path.split(separator: "/").map(String.init) }
     var hasRoot: Bool { rootName != nil }
     func refresh() {
+        libraryRevision += 1
         rootName = repository.root?.name
         guard hasRoot else { entries = []; lessons = []; return }
         do {
@@ -144,6 +146,20 @@ enum LibraryScreen { case library, today, campus, settings }
     func create(name: String, folder: Bool, template: PaperTemplate) throws {
         if folder { try repository.createFolder(parent: path, name: name) }
         else { _ = try repository.createNote(parent: path, name: name, template: template.rawValue) }
+        refresh()
+    }
+    func move(_ paths: [String], into folder: String) throws {
+        guard !activeRecording, !pendingRecording else { throw InkError.busy }
+        let mappings = try repository.moveItems(paths, into: folder)
+        func remap(_ path: String) -> String {
+            for (from, to) in mappings { if path == from { return to }; if path.hasPrefix(from + "/") { return to + path.dropFirst(from.count) } }
+            return path
+        }
+        recent = recent.map(remap); favorites = Set(favorites.map(remap)); folderColors = Dictionary(uniqueKeysWithValues: folderColors.map { (remap($0.key), $0.value) })
+        UserDefaults.standard.set(recent, forKey: "library.recent"); UserDefaults.standard.set(Array(favorites), forKey: "library.favorites"); UserDefaults.standard.set(folderColors, forKey: "library.folder-colors")
+        let rootID = (try? repository.access().url.absoluteString) ?? rootName ?? "InkDrive"
+        let key = "inkdrive.document-tabs." + CoordinatedStore.digest(Data(rootID.utf8))
+        if let tabs = UserDefaults.standard.stringArray(forKey: key) { UserDefaults.standard.set(tabs.map(remap), forKey: key) }
         refresh()
     }
     func toggleFavorite(_ path: String) {

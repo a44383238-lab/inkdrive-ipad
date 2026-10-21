@@ -34,6 +34,7 @@ struct LibraryRootView: View {
     @State private var selected = Set<String>()
     @State private var selecting = false
     @State private var showAdd = false
+    @State private var showMove = false
     @State private var showSidebar = true
     @State private var sortRecent = false
     private let folderPalette = ["#B7A3F7", "#E88BBD", "#FFD05A", "#F2A752", "#8AE3A4", "#8DBCF0", "#C58AEF"]
@@ -66,6 +67,10 @@ struct LibraryRootView: View {
         .overlay(alignment: .bottomTrailing) { if store.busy { ProgressView().padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)).padding(24) } }
         .disabled(store.busy)
         .alert("InkDrive", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("확인", role: .cancel) { store.message = nil } } message: { Text(store.message ?? "") }
+        .sheet(isPresented: $showMove) { FolderDestinationView(paths: Array(selected)) { folder in
+            do { try store.move(Array(selected), into: folder); selected.removeAll(); selecting = false; showMove = false }
+            catch { store.message = error.localizedDescription }
+        }.environmentObject(store) }
         .sheet(item: $form) { CreationSheet(request: $0).environmentObject(store) }
         .sheet(item: $store.textPreview) { value in
             NavigationStack { ScrollView { Text(value.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled).padding(24) }.navigationTitle(value.title).toolbar { ToolbarItem(placement: .topBarLeading) { Button { store.textPreview = nil } label: { NativeIcon(name: "arrow-left") }.accessibilityLabel("서재로") } } }
@@ -132,6 +137,7 @@ struct LibraryRootView: View {
                         Button("모두 선택") { selected = Set(shown.map(\.path)) }.font(.system(size: 12))
                         Text("\(selected.count)").font(.system(size: 12)).foregroundStyle(.secondary)
                         Spacer()
+                        IconAction(icon: "folder-open", label: "선택한 문서 이동", disabled: selected.isEmpty) { showMove = true }
                         Button { for path in selected { store.toggleFavorite(path) }; selecting = false; selected.removeAll() } label: { NativeIcon(name: "star", size: 18).frame(width: 44, height: 44) }.accessibilityLabel("선택한 문서 즐겨찾기 전환")
                     } else {
                         Spacer()
@@ -176,7 +182,7 @@ struct LibraryRootView: View {
             } label: {
                 ZStack(alignment: .topTrailing) {
                     Group {
-                        if entry.directory { FolderGlyph(color: Color(uiColor: UIColor(hex: store.folderColors[entry.path] ?? folderPalette[index % folderPalette.count]))).frame(width: 104, height: 82) }
+                        if entry.directory { FolderGlyph(color: Color(uiColor: UIColor(hex: store.folderColors[entry.path] ?? folderPalette[entry.path.utf8.reduce(0) { ($0 + Int($1)) % folderPalette.count }]))).frame(width: 104, height: 82) }
                         else { DocumentThumbnail(entry: entry).shadow(color: .black.opacity(0.18), radius: 2, y: 1) }
                     }.frame(maxWidth: .infinity).frame(height: 148)
                     if store.favorites.contains(entry.path) { Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(entry.directory ? Color.pink : accent).offset(x: -3, y: -2) }
@@ -186,6 +192,7 @@ struct LibraryRootView: View {
             HStack(spacing: 3) {
                 Text(entry.displayName.replacingOccurrences(of: ".pdf", with: "", options: .caseInsensitive)).font(.system(size: 11)).lineLimit(2).multilineTextAlignment(.center).frame(maxWidth: .infinity, minHeight: 29)
                 Menu {
+                    Button("이동") { selected = [entry.path]; showMove = true }
                     Button(store.favorites.contains(entry.path) ? "즐겨찾기 해제" : "즐겨찾기") { store.toggleFavorite(entry.path) }
                     if entry.directory { ForEach(folderPalette, id: \.self) { color in Button(color) { store.setFolderColor(color, path: entry.path) } } }
                 } label: { NativeIcon(name: "chevron-down", size: 12).foregroundStyle(.secondary).frame(width: 26, height: 32) }.accessibilityLabel(entry.displayName + " 메뉴")
@@ -233,18 +240,50 @@ private struct DocumentThumbnail: View {
     var body: some View {
         Group { if let image { Image(uiImage: image).resizable().scaledToFit() }
             else { NativeIcon(name: "file-text", size: 28).foregroundStyle(Color.gray).frame(width: 80, height: 112).background(Color(white: 0.92), in: RoundedRectangle(cornerRadius: 3)) } }
-            .task(id: entry.path) {
+            .task(id: entry.path + String(store.libraryRevision)) {
                 guard entry.path.lowercased().hasSuffix(".pdf"), let scope = try? store.repository.access(), let url = try? FileNames.child(entry.path, in: scope.url) else { return }
                 let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?.timeIntervalSince1970 ?? 0
                 let key = (url.path + String(date)) as NSString
                 if let cached = Self.cache.object(forKey: key) { image = cached; return }
                 // Render only visible LazyVGrid cells; never hydrate every iCloud document at startup.
                 await Task.yield()
-                guard !Task.isCancelled, let page = PDFDocument(url: url)?.page(at: 0) else { return }
+                guard !Task.isCancelled, let snapshot = try? await CoordinatedStore(url: url, scope: scope).read(), !Task.isCancelled, let page = PDFDocument(data: snapshot.data)?.page(at: 0) else { return }
                 let preview = page.thumbnail(of: CGSize(width: 240, height: 296), for: .cropBox)
-                Self.cache.setObject(preview, forKey: key); image = preview
+                Self.cache.countLimit = 80; Self.cache.setObject(preview, forKey: key); image = preview
                 withExtendedLifetime(scope) {}
             }
+    }
+}
+
+private struct FolderDestinationView: View {
+    @EnvironmentObject private var store: NativeLibraryStore
+    @Environment(\.dismiss) private var dismiss
+    let paths: [String]
+    let move: (String) -> Void
+    @State private var path = ""
+    @State private var folders: [LibraryEntry] = []
+    private var allowed: Bool { !paths.contains { path == $0 || path.hasPrefix($0 + "/") } }
+    var body: some View {
+        NavigationStack {
+            List {
+                if !path.isEmpty { Button { path = path.split(separator: "/").dropLast().joined(separator: "/"); refresh() } label: { Label("상위 폴더", systemImage: "chevron.left") } }
+                ForEach(folders) { entry in
+                    Button { path = entry.path; refresh() } label: { HStack { Image(systemName: "folder.fill").foregroundStyle(.purple); Text(entry.displayName); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.secondary) } }
+                }
+            }.navigationTitle(path.isEmpty ? store.rootName ?? "InkDrive" : LibraryEntry.folderTitle(URL(fileURLWithPath: path).lastPathComponent))
+                .navigationBarTitleDisplayMode(.inline).toolbar {
+                    ToolbarItem(placement: .topBarLeading) { Button("취소") { dismiss() } }
+                    ToolbarItem(placement: .topBarTrailing) { Button("여기로 이동") { move(path) }.disabled(!allowed) }
+                }
+        }.preferredColorScheme(.dark).presentationDetents([.large]).task { refresh() }
+    }
+    private func refresh() {
+        do {
+            folders = try store.repository.list(path).compactMap { value in
+                guard value["directory"] as? Bool == true, let name = value["name"] as? String, let relative = value["path"] as? String, !paths.contains(where: { relative == $0 || relative.hasPrefix($0 + "/") }) else { return nil }
+                return LibraryEntry(name: name, path: relative, directory: true)
+            }.sorted { $0.displayName < $1.displayName }
+        } catch { store.message = error.localizedDescription }
     }
 }
 
