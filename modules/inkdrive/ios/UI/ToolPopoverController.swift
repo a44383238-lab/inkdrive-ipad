@@ -93,7 +93,7 @@ import UIKit
         number.text = format(value)
         slider.addAction(UIAction { [weak slider, weak number] _ in guard let slider else { return }; let value = Double(slider.value); number?.text = format(value); update(value) }, for: .valueChanged)
         stack.addArrangedSubview(slider); stack.addArrangedSubview(number)
-        for delta: Float in [-1, 1] {
+        for delta in [Float(-1), Float(1)] {
             let button = InkIcons.button(delta < 0 ? "minus" : "plus", label: (unit == "px" ? "굵기" : "불투명도") + (delta < 0 ? " 줄이기" : " 늘리기"), compact: true)
             button.addAction(UIAction { [weak slider, weak number] _ in
                 guard let slider else { return }; let step: Float = unit == "px" ? (min >= 4 ? 1 : 0.1) : 5
