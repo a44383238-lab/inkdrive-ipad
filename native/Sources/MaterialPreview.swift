@@ -36,7 +36,8 @@ struct HTMLMaterialView: View {
     private func snapshot() {
         guard let browser else { return }; saving = true
         guard browser.scrollView.contentSize.height <= 18000 else { saving = false; error = "긴 자료는 페이지를 나눈 고정본이 필요해요."; return }
-        let config = WKPDFConfiguration(); config.rect = CGRect(origin: .zero, size: CGSize(width: browser.bounds.width, height: min(30000, max(browser.bounds.height, browser.scrollView.contentSize.height))))
+        let rect = CGRect(origin: .zero, size: CGSize(width: browser.bounds.width, height: min(18000, max(browser.bounds.height, browser.scrollView.contentSize.height))))
+        let config = WKPDFConfiguration(); config.rect = rect
         browser.createPDF(configuration: config) { result in
             Task { @MainActor in
                 saving = false
@@ -45,7 +46,7 @@ struct HTMLMaterialView: View {
                     let folder = scope.url.appendingPathComponent("Snapshots")
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     try data.write(to: folder.appendingPathComponent(filename), options: .withoutOverwriting)
-                    let adapter = DocumentAdapter(kind: "html-snapshot", originalPath: String(document.url.path.dropFirst(scope.url.path.count + 1)), originalSHA256: try FileHasher.digest(document.url), width: Double(config.rect.width), height: Double(config.rect.height))
+                    let adapter = DocumentAdapter(kind: "html-snapshot", originalPath: String(document.url.path.dropFirst(scope.url.path.count + 1)), originalSHA256: try FileHasher.digest(document.url), width: Double(rect.width), height: Double(rect.height))
                     try JSONEncoder().encode(adapter).write(to: folder.appendingPathComponent(filename + ".adapter.json"), options: .atomic)
                     dismiss(); store.refresh()
                 } catch { self.error = error.localizedDescription }
