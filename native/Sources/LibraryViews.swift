@@ -260,7 +260,7 @@ struct CreationSheet: View {
         NavigationStack {
             Form {
                 TextField("이름", text: $name).accessibilityLabel("이름")
-                if !request.folder { Picker("종이", selection: $template) { Text("무지").tag(PaperTemplate.plain); Text("줄노트").tag(PaperTemplate.ruled); Text("모눈").tag(PaperTemplate.grid) }.pickerStyle(.segmented) }
+                if !request.folder { Picker("종이", selection: $template) { Text("무지").tag(PaperTemplate.plain); Text("줄노트").tag(PaperTemplate.ruled); Text("모눈").tag(PaperTemplate.grid); Text("노란 줄노트").tag(PaperTemplate.yellowRuled) }.pickerStyle(.segmented) }
                 if !error.isEmpty { Text(error).foregroundStyle(.red).font(.subheadline) }
             }.navigationTitle(request.folder ? "새 폴더" : "새 노트").navigationBarTitleDisplayMode(.inline)
                 .toolbar {

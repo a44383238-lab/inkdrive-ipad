@@ -69,7 +69,7 @@ import PDFKit
     @objc private func add() {
         let alert = UIAlertController(title: "새 페이지", message: "마지막에 추가해요.", preferredStyle: .actionSheet)
         for template in PaperTemplate.allCases {
-            let label = template == .plain ? "무지" : template == .ruled ? "줄노트" : "모눈"
+            let label = template == .plain ? "무지" : template == .ruled ? "줄노트" : template == .yellowRuled ? "노란 줄노트" : "모눈"
             alert.addAction(UIAlertAction(title: label, style: .default) { _ in
                 do { try self.editor.session.insertPage(at: self.editor.session.model.pages.count, template: template); self.tableView.reloadData() }
                 catch { self.editor.showError(error) }

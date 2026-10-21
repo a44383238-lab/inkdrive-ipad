@@ -1,7 +1,7 @@
 import PDFKit
 import PencilKit
 
-enum PaperTemplate: String, CaseIterable { case plain, ruled, grid }
+enum PaperTemplate: String, CaseIterable { case plain, ruled, grid, yellowRuled = "yellow-ruled" }
 final class NotebookPage {
     let id: UUID
     let page: PDFPage
@@ -93,7 +93,7 @@ final class PDFModel {
         return UIGraphicsPDFRenderer(bounds: bounds).pdfData { renderer in
             renderer.beginPage()
             let context = renderer.cgContext
-            UIColor.white.setFill(); context.fill(bounds)
+            (template == .yellowRuled ? UIColor(hex: "#FAF4BD") : UIColor.white).setFill(); context.fill(bounds)
             guard template != .plain else { return }
             UIColor(white: 0.87, alpha: 1).setStroke(); context.setLineWidth(0.4)
             for y in stride(from: 36.0, through: 806.0, by: 24) {
@@ -105,6 +105,10 @@ final class PDFModel {
                 }
             }
             context.strokePath()
+            if template == .yellowRuled {
+                UIColor(hex: "#C97769").setStroke(); context.setLineWidth(0.65)
+                context.move(to: CGPoint(x: 112, y: 36)); context.addLine(to: CGPoint(x: 112, y: 806)); context.strokePath()
+            }
         }
     }
 }

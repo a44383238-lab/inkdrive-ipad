@@ -3,12 +3,18 @@ import XCTest
 final class InkDriveUITests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
     func testLibraryAndEditorWorkWithoutDevelopmentServer() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication(); app.launchArguments = ["--ui-smoke"]; app.launch()
         XCTAssertTrue(app.buttons["통계학"].waitForExistence(timeout: 12))
         XCTAssertFalse(app.buttons["새 수업 녹음"].exists)
         XCTAssertFalse(app.buttons["수업 연결"].exists)
         XCTAssertTrue(app.buttons["학교"].exists)
         attach("Swift library", app)
+        app.buttons["새 문서 메뉴"].tap()
+        XCTAssertTrue(app.buttons["새 폴더"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["새 노트"].exists)
+        attach("Creation menu", app)
+        app.buttons["새 문서 메뉴"].tap()
         app.buttons["통계학"].tap()
         XCTAssertTrue(app.buttons["강의 1.pdf"].waitForExistence(timeout: 5))
         app.buttons["상위 폴더"].tap()
@@ -35,6 +41,11 @@ final class InkDriveUITests: XCTestCase {
         app.buttons["페이지"].tap()
         XCTAssertTrue(app.buttons["목차·북마크·검색"].waitForExistence(timeout: 5))
         attach("Page overview", app)
+        app.buttons["페이지 추가"].tap()
+        XCTAssertTrue(app.buttons["노란 줄노트"].waitForExistence(timeout: 3))
+        app.buttons["노란 줄노트"].tap()
+        XCTAssertTrue(app.collectionViews.cells["2 페이지"].waitForExistence(timeout: 5))
+        attach("Inserted yellow page", app)
         app.buttons["목차·북마크·검색"].tap()
         XCTAssertTrue(app.buttons["목차"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["북마크"].exists)

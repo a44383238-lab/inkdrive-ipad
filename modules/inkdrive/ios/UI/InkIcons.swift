@@ -13,7 +13,8 @@ final class InkColorButton: UIButton {
         #else
         let bundle = Bundle.main.url(forResource: "InkDriveIcons", withExtension: "bundle").flatMap(Bundle.init(url:)) ?? Bundle.main
         #endif
-        return UIImage(named: name, in: bundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
+        let symbols = ["circle-check": "checkmark.circle", "chevron-left": "chevron.left", "chevron-down": "chevron.down", "panel-left": "sidebar.left", "arrow-down-wide-narrow": "line.3.horizontal.decrease", "rotate-cw": "rotate.right"]
+        return (UIImage(named: name, in: bundle, compatibleWith: nil) ?? UIImage(systemName: symbols[name] ?? name, withConfiguration: UIImage.SymbolConfiguration(pointSize: 19, weight: .regular)))?.withRenderingMode(.alwaysTemplate)
     }
     static func button(_ icon: String, label: String, compact: Bool = false) -> UIButton {
         let item = InkColorButton(type: .system)

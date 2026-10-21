@@ -56,10 +56,30 @@ import PencilKit
         XCTAssertLessThanOrEqual(recordButton.frame.width, 120)
         XCTAssertNotNil(buttons.first { $0.accessibilityLabel == "서재로" })
         let bar = try XCTUnwrap(pen.superview?.superview?.superview?.superview)
-        XCTAssertEqual(bar.frame.height, 56, accuracy: 0.1)
+        XCTAssertEqual(bar.frame.height, 48, accuracy: 0.1)
         let image = UIGraphicsImageRenderer(bounds: editor.view.bounds).image { editor.view.layer.render(in: $0.cgContext) }
         let attachment = XCTAttachment(image: image); attachment.name = "InkDrive editor landscape"; attachment.lifetime = .keepAlways
         add(attachment)
+    }
+    func testToolbarRotationPreservesToolAndClampsInsideViewport() throws {
+        UserDefaults.standard.set(false, forKey: "inkdrive.toolbar-vertical")
+        let editor = try editor()
+        let bar = try XCTUnwrap(descendants(editor.view).first { $0.accessibilityIdentifier == "ink-toolbar" })
+        editor.perform(NSSelectorFromString("rotateToolbar")); editor.view.layoutIfNeeded()
+        XCTAssertEqual(bar.frame.width, 48, accuracy: 0.1)
+        XCTAssertGreaterThan(bar.frame.height, bar.frame.width)
+        XCTAssertTrue(editor.view.bounds.contains(bar.frame))
+        XCTAssertEqual(editor.tool, .pen)
+        editor.perform(NSSelectorFromString("rotateToolbar")); editor.view.layoutIfNeeded()
+        XCTAssertEqual(bar.frame.height, 48, accuracy: 0.1)
+    }
+    func testYellowPaperKeepsVectorPageAndSurvivesSerialization() throws {
+        let model = try PDFModel(data: PDFModel.blank(template: .yellowRuled))
+        XCTAssertEqual(model.pdf.pageCount, 1)
+        XCTAssertEqual(model.pdf.page(at: 0)?.bounds(for: .mediaBox).size, CGSize(width: 595, height: 842))
+        let reopened = try PDFModel(data: model.snapshot())
+        XCTAssertEqual(reopened.pages[0].id, model.pages[0].id)
+        XCTAssertNotNil(PenNibArtwork.image(tool: .pen, color: .red, width: 0.5))
     }
     func testToolSettingsUsePixelUnits() {
         let controller = ToolPopoverController(tool: .pen, settings: ToolSettings()) { _ in }

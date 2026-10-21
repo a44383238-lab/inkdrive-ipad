@@ -79,7 +79,7 @@ import AVFoundation
         pdfView.isInMarkupMode = true
         pdfView.pageOverlayViewProvider = provider
         pdfView.document = session.model.pdf
-        pdfView.displayMode = UserDefaults.standard.bool(forKey: "inkdrive.continuous-pages") ? .singlePageContinuous : .singlePage
+        pdfView.displayMode = (UserDefaults.standard.object(forKey: "inkdrive.continuous-pages") as? Bool ?? true) ? .singlePageContinuous : .singlePage
         pdfView.displayDirection = .vertical
         pdfView.backgroundColor = UIColor(white: 0.12, alpha: 1)
         pdfView.displayBox = .cropBox; pdfView.autoScales = true; pdfView.pageShadowsEnabled = true
@@ -88,7 +88,7 @@ import AVFoundation
         header.addArrangedSubview(iconButton("arrow-left", label: "서재로", action: #selector(closeEditor)))
         status.text = session.store.url.deletingPathExtension().lastPathComponent; status.font = .systemFont(ofSize: 12, weight: .medium); status.numberOfLines = 1; status.lineBreakMode = .byTruncatingMiddle
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        header.addArrangedSubview(status)
+        status.isHidden = true; header.addArrangedSubview(status); header.addArrangedSubview(UIView())
         recordButton.accessibilityLabel = "녹음 시작"
         recordButton.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
         recordButton.layer.cornerRadius = 3; recordButton.backgroundColor = .clear
@@ -334,6 +334,7 @@ import AVFoundation
         present(panel, animated: true)
     }
     private func buildToolbar() {
+        floating.accessibilityIdentifier = "ink-toolbar"
         floating.backgroundColor = .black; floating.layer.cornerRadius = 5
         floating.layer.borderWidth = 1; floating.layer.borderColor = UIColor(white: 0.25, alpha: 1).cgColor
         floating.layer.shadowColor = UIColor(hex: "#203653").cgColor; floating.layer.shadowOpacity = 0.25

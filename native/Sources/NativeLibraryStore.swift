@@ -154,7 +154,11 @@ enum LibraryScreen { case library, today, campus, settings }
         folderColors[path] = color; UserDefaults.standard.set(folderColors, forKey: "library.folder-colors")
     }
     func entry(_ path: String) -> LibraryEntry {
-        LibraryEntry(name: URL(fileURLWithPath: path).lastPathComponent, path: path, directory: false)
+        var directory = false
+        if let scope = try? repository.access(), let url = try? FileNames.child(path, in: scope.url) {
+            directory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+        }
+        return LibraryEntry(name: URL(fileURLWithPath: path).lastPathComponent, path: path, directory: directory)
     }
     func chooseFolder() {
         guard !activeRecording, !pendingRecording else { message = "녹음 종료·복구 후 폴더를 바꿔 주세요."; return }

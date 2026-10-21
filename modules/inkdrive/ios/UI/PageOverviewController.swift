@@ -17,8 +17,10 @@ import PDFKit
         super.viewDidLoad(); overrideUserInterfaceStyle = .dark; view.backgroundColor = UIColor(white: 0.12, alpha: 1); view.tintColor = UIColor(hex: "#F4CA52")
         title = editor.session.store.url.deletingPathExtension().lastPathComponent
         navigationItem.leftBarButtonItem = UIBarButtonItem(image: InkIcons.image("arrow-left"), style: .plain, target: self, action: #selector(done)); navigationItem.leftBarButtonItem?.accessibilityLabel = "필기로"
+        navigationItem.rightBarButtonItem?.accessibilityLabel = "페이지 추가"
         let find = UIBarButtonItem(image: InkIcons.image("search"), style: .plain, target: self, action: #selector(searchPages)); find.accessibilityLabel = "목차·북마크·검색"
-        navigationItem.rightBarButtonItems = [UIBarButtonItem(image: InkIcons.image("plus"), style: .plain, target: self, action: #selector(add)), find]
+        let plus = UIBarButtonItem(image: InkIcons.image("plus"), style: .plain, target: self, action: #selector(add)); plus.accessibilityLabel = "페이지 추가"
+        navigationItem.rightBarButtonItems = [plus, find]
         paths = (try? editor.listDocuments?()) ?? []
         documents.dataSource = self; documents.delegate = self; documents.rowHeight = 64; documents.backgroundColor = UIColor(white: 0.145, alpha: 1); documents.separatorStyle = .none
         grid.dataSource = self; grid.delegate = self; grid.backgroundColor = .clear; grid.register(PagePreviewCell.self, forCellWithReuseIdentifier: "page")
@@ -37,7 +39,7 @@ import PDFKit
         let menu = UIAlertController(title: "페이지 추가", message: nil, preferredStyle: .actionSheet)
         let index = editor.pdfView.currentPage.map { editor.session.model.pdf.index(for: $0) + 1 } ?? editor.session.model.pages.count
         for template in PaperTemplate.allCases {
-            menu.addAction(UIAlertAction(title: template == .plain ? "무지" : template == .ruled ? "줄노트" : "모눈", style: .default) { _ in
+            menu.addAction(UIAlertAction(title: template == .plain ? "무지" : template == .ruled ? "줄노트" : template == .yellowRuled ? "노란 줄노트" : "모눈", style: .default) { _ in
                 do { self.editor.provider.commitAll(); try self.editor.session.insertPage(at: index, template: template); self.grid.reloadData() }
                 catch { self.editor.showError(error) }
             })
