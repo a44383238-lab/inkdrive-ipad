@@ -63,7 +63,7 @@ enum CampusHTML {
         return matches("(?:href|src)=[\"']([^\"']*pluginfile\\.php[^\"']*)[\"']", html).compactMap {
             guard let url = URL(string: $0[1].replacingOccurrences(of: "&amp;", with: "&"), relativeTo: URL(string: "https://plato.pusan.ac.kr/"))?.absoluteURL,
                   url.host == "plato.pusan.ac.kr", url.scheme == "https",
-                  url.path.range(of: "/(?:user/icon|course/overviewfiles|theme_[^/]+)/", options: .regularExpression) == nil,
+                  url.path.range(of: "/(?:user/icon|course/overviewfiles|core_admin|theme_[^/]+)/", options: .regularExpression) == nil,
                   seen.insert(url.absoluteString).inserted else { return nil }; return url
         }
     }

@@ -10,6 +10,7 @@ test('school metadata retains term and section; external links and traversal nam
   const html=`<a href="/mod/ubfile/view.php?id=3&amp;x=2"><span>자료</span></a><a href="https://evil.test/mod/ubfile/view.php?id=4">bad</a><a href="/mod/assign/view.php?id=7">과제</a>`;
   assert.deepEqual(resources(html).map(x=>x.id),['3','7']);assert.equal(resources(html)[0].title,'자료');
   assert.deepEqual(pluginFiles(`<a href="https://evil.test/pluginfile.php/a.pdf">bad</a>`),[]);
+  assert.deepEqual(pluginFiles(`<link href='/pluginfile.php/1/core_admin/favicon/64x64/favicon.ico'>`),[]);
   assert.doesNotMatch(safeName('../../CON.pdf'),/[\\/]/);assert.notEqual(safeName('CON.pdf'),'CON.pdf');
 });
 test('school filenames decode UTF-8 headers and keep the extension of long Korean names; decorative icons are excluded',()=>{

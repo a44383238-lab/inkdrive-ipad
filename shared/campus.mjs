@@ -32,7 +32,7 @@ export function resources(html) {
 }
 export function pluginFiles(html) {
   return [...new Set([...html.matchAll(/(?:href|src)=["']([^"']*pluginfile\.php[^"']*)["']/gi)].flatMap(m => {
-    try { const url = schoolURL(m[1]); return url.hostname === 'plato.pusan.ac.kr' && !/\/(?:user\/icon|course\/overviewfiles|theme_[^/]+)\//i.test(url.pathname) ? [url.href] : []; } catch { return []; }
+    try { const url = schoolURL(m[1]); return url.hostname === 'plato.pusan.ac.kr' && !/\/(?:user\/icon|course\/overviewfiles|core_admin|theme_[^/]+)\//i.test(url.pathname) ? [url.href] : []; } catch { return []; }
   }))];
 }
 export function attachmentName(disposition, fallback) {
