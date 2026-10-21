@@ -22,6 +22,8 @@ enum RecordingCatalog {
 /// Never autoplays. Only an explicit press of Play activates the audio session.
 @MainActor final class RecordingBrowserController: UITableViewController {
     let rows: [RecordingRow]
+    var keepPlayingWhenHidden = false
+    var playbackChanged: ((Double, Double, Bool) -> Void)?
     private let scope: SecurityScope?
     private(set) var player: AVPlayer?
     let playButton = InkIcons.button("play", label: "재생")
@@ -49,7 +51,7 @@ enum RecordingCatalog {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
         super.viewDidLoad(); title = "녹음"
-        view.backgroundColor = UIColor(hex: "#F8F9FC")
+        view.backgroundColor = UIColor(white: 0.14, alpha: 1); overrideUserInterfaceStyle = .dark; view.tintColor = UIColor(hex: "#E8C65A")
         navigationItem.leftBarButtonItem = UIBarButtonItem(image: InkIcons.image("arrow-left"), style: .plain, target: self, action: #selector(close))
         navigationItem.leftBarButtonItem?.accessibilityLabel = "필기로"
         tableView.rowHeight = 64
@@ -58,7 +60,7 @@ enum RecordingCatalog {
         stack.translatesAutoresizingMaskIntoConstraints = false; header.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 22), stack.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -22), stack.topAnchor.constraint(equalTo: header.topAnchor, constant: 20)])
         name.text = rows.isEmpty ? "저장된 녹음 없음" : "녹음을 선택해 주세요"
-        name.font = .systemFont(ofSize: 16, weight: .semibold); name.textColor = UIColor(hex: "#344A65"); name.numberOfLines = 1
+        name.font = .systemFont(ofSize: 16, weight: .semibold); name.textColor = UIColor(white: 0.9, alpha: 1); name.numberOfLines = 1
         stack.addArrangedSubview(name)
         seek.minimumValue = 0; seek.maximumValue = 1; seek.isEnabled = false; seek.accessibilityLabel = "재생 위치"
         seek.addTarget(self, action: #selector(scrub), for: .valueChanged); stack.addArrangedSubview(seek)
@@ -81,11 +83,14 @@ enum RecordingCatalog {
         }
     }
     override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated); generation += 1; teardown()
+        super.viewDidDisappear(animated); if !keepPlayingWhenHidden { shutdown() }
     }
     deinit { if let interruptToken { NotificationCenter.default.removeObserver(interruptToken) } }
     @objc private func close() { dismiss(animated: true) }
-    private func pause() { player?.pause(); playButton.setImage(InkIcons.image("play"), for: .normal); playButton.accessibilityLabel = "재생" }
+    func shutdown() { generation += 1; teardown() }
+    func toggleFromDock() { togglePlay() }
+    func seekFromDock(_ value: Double) { jump(value) }
+    private func pause() { player?.pause(); playbackChanged?(player?.currentTime().seconds ?? 0, duration, false); playButton.setImage(InkIcons.image("play"), for: .normal); playButton.accessibilityLabel = "재생" }
     private func teardown() {
         pause()
         if let token { player?.removeTimeObserver(token) }; token = nil
@@ -103,6 +108,7 @@ enum RecordingCatalog {
             if player.currentTime().seconds >= duration - 0.1 { player.seek(to: .zero) }
             player.playImmediately(atRate: rate)
             playButton.setImage(InkIcons.image("pause"), for: .normal); playButton.accessibilityLabel = "일시정지"
+            playbackChanged?(player.currentTime().seconds, duration, true)
         } catch { show(error) }
     }
     static func timestamp(_ seconds: Double) -> String {
@@ -119,7 +125,7 @@ enum RecordingCatalog {
         let row = rows[indexPath.row], cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
         cell.textLabel?.text = row.title
         cell.detailTextLabel?.text = durations[row.path].map(Self.timestamp) ?? "—:—"
-        cell.imageView?.image = InkIcons.image("play"); cell.tintColor = UIColor(hex: "#3665BF")
+        cell.imageView?.image = InkIcons.image("play"); cell.tintColor = UIColor(hex: "#E8C65A")
         cell.accessoryType = selection == indexPath.row ? .checkmark : .none
         cell.accessibilityLabel = "\(row.title), 녹음 재생"
         return cell
@@ -155,6 +161,7 @@ enum RecordingCatalog {
                         guard let self else { return }
                         if !self.seek.isTracking { self.seek.value = Float(value.seconds.isFinite ? value.seconds : 0) }
                         self.time.text = "\(Self.timestamp(value.seconds)) / \(Self.timestamp(self.duration))"
+                        self.playbackChanged?(value.seconds, self.duration, self.player?.rate != 0)
                     }
                 }
                 endToken = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in

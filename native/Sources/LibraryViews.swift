@@ -1,8 +1,9 @@
 import SwiftUI
+import PDFKit
 
-private let ink = Color(red: 0.15, green: 0.21, blue: 0.31)
-private let accent = Color(red: 0.21, green: 0.40, blue: 0.75)
-private let canvas = Color(red: 0.97, green: 0.98, blue: 0.99)
+private let ink = Color(white: 0.91)
+private let accent = Color(red: 1, green: 0.79, blue: 0.25)
+private let canvas = Color(white: 0.12)
 
 struct NativeIcon: View {
     let name: String
@@ -19,58 +20,53 @@ struct IconAction: View {
     var disabled = false
     let action: () -> Void
     var body: some View {
-        Button(action: action) { NativeIcon(name: icon).frame(width: 44, height: 44).foregroundStyle(highlighted ? .white : ink.opacity(0.7)).background(highlighted ? accent : Color(red: 0.93, green: 0.95, blue: 0.97), in: RoundedRectangle(cornerRadius: 13)) }
-            .buttonStyle(.plain).accessibilityLabel(label).disabled(disabled).opacity(disabled ? 0.35 : 1)
+        Button(action: action) { NativeIcon(name: icon, size: 19).frame(width: 44, height: 44).foregroundStyle(highlighted ? accent : ink.opacity(0.8)) }
+            .buttonStyle(.plain).accessibilityLabel(label).disabled(disabled).opacity(disabled ? 0.3 : 1)
     }
 }
+
 struct LibraryRootView: View {
     @EnvironmentObject private var store: NativeLibraryStore
     @Environment(\.scenePhase) private var phase
     @State private var form: CreationRequest?
+    @State private var category = 0
+    @State private var fileFilter = 0
+    @State private var selected = Set<String>()
+    @State private var selecting = false
+    @State private var showAdd = false
+    @State private var showSidebar = true
+    @State private var sortRecent = false
+    private let folderPalette = ["#B7A3F7", "#E88BBD", "#FFD05A", "#F2A752", "#8AE3A4", "#8DBCF0", "#C58AEF"]
+    private var shown: [LibraryEntry] {
+        let entries = category == 1 ? store.recent.map(store.entry) : category == 2 ? store.favorites.sorted().map { path in
+            store.entries.first { $0.path == path } ?? store.entry(path)
+        } : store.filtered
+        let filtered = entries.filter { entry in
+            (store.query.isEmpty || entry.displayName.localizedCaseInsensitiveContains(store.query)) &&
+            (fileFilter == 0 || entry.directory || (fileFilter == 1 ? entry.path.lowercased().hasSuffix(".pdf") : !entry.path.lowercased().hasSuffix(".pdf")))
+        }
+        return sortRecent ? filtered.sorted { (store.recent.firstIndex(of: $0.path) ?? Int.max) < (store.recent.firstIndex(of: $1.path) ?? Int.max) } : filtered
+    }
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 16) {
-                NativeIcon(name: "pen-tool", size: 24).foregroundStyle(.white).frame(width: 44, height: 44).background(accent, in: RoundedRectangle(cornerRadius: 15)).padding(.bottom, 22)
-                nav(.library, "book-open", "서재")
-                nav(.today, "calendar-days", "수업")
-                nav(.campus, "globe", "학교")
-                Spacer()
-                nav(.settings, "settings-2", "설정")
-            }.padding(.vertical, 24).frame(width: 80).background(Color(red: 0.93, green: 0.95, blue: 0.97))
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    if store.activeRecording {
-                        HStack {
-                            Circle().fill(.red).frame(width: 8, height: 8)
-                            Text(RecordingBrowserController.timestamp(store.elapsed)).monospacedDigit().font(.subheadline)
-                            Spacer()
-                            IconAction(icon: "square", label: "녹음 종료", action: store.stopRecording)
-                        }.padding(12).background(Color.red.opacity(0.05), in: RoundedRectangle(cornerRadius: 14))
-                    }
-                    if store.pendingRecording && !store.activeRecording {
-                        HStack { Text("미완료 녹음").font(.subheadline); Spacer(); Button("복구", action: store.recoverRecording) }
-                            .padding(14).background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-                    }
-                    HStack {
-                        Text(store.screen == .library ? "서재" : store.screen == .today ? "수업" : store.screen == .campus ? "학교" : "설정").font(.system(size: 30, weight: .bold))
-                        Spacer()
-                        if store.screen == .library {
-                            IconAction(icon: "folder-plus", label: "새 폴더", disabled: !store.hasRoot) { form = CreationRequest(folder: true) }
-                            IconAction(icon: "file-text", label: "PDF 열기", action: store.choosePDF)
-                            IconAction(icon: "plus", label: "새 노트", highlighted: true, disabled: !store.hasRoot) { form = CreationRequest(folder: false) }
-                        }
-                    }
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                if showSidebar { sidebar.frame(width: min(230, max(180, geometry.size.width * 0.18))) }
+                VStack(spacing: 0) {
+                    header
                     if store.screen == .library { library }
-                    else if store.screen == .today { today }
-                    else if store.screen == .campus { CampusPanel(campus: store.campus) }
-                    else { settings }
-                }.padding(32).frame(maxWidth: 1240, alignment: .leading).frame(maxWidth: .infinity)
-            }.background(canvas)
-        }.foregroundStyle(ink)
-        .overlay(alignment: .bottomTrailing) { if store.busy { ProgressView().padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14)).padding(24) } }
+                    else { ScrollView { Group {
+                        if store.screen == .today { today }
+                        else if store.screen == .campus { CampusPanel(campus: store.campus) }
+                        else { settings }
+                    }.padding(24) } }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }.background(canvas).foregroundStyle(ink)
+        }
+        .preferredColorScheme(.dark).tint(accent)
+        .overlay(alignment: .bottomTrailing) { if store.busy { ProgressView().padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)).padding(24) } }
         .disabled(store.busy)
         .alert("InkDrive", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("확인", role: .cancel) { store.message = nil } } message: { Text(store.message ?? "") }
-        .sheet(item: $form) { request in CreationSheet(request: request).environmentObject(store) }
+        .sheet(item: $form) { CreationSheet(request: $0).environmentObject(store) }
         .sheet(item: $store.textPreview) { value in
             NavigationStack { ScrollView { Text(value.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled).padding(24) }.navigationTitle(value.title).toolbar { ToolbarItem(placement: .topBarLeading) { Button { store.textPreview = nil } label: { NativeIcon(name: "arrow-left") }.accessibilityLabel("서재로") } } }
         }
@@ -82,76 +78,173 @@ struct LibraryRootView: View {
         .onChange(of: phase) { _, value in if value == .active { store.date = NativeLibraryStore.today(); store.refresh(); if !ProcessInfo.processInfo.arguments.contains("--ui-smoke") { store.campus.checkIfDue() } } }
         .task { if !ProcessInfo.processInfo.arguments.contains("--ui-smoke") { store.campus.checkIfDue() } }
     }
-    private func nav(_ screen: LibraryScreen, _ icon: String, _ label: String) -> some View {
-        Button { store.screen = screen; store.refresh() } label: {
-            NativeIcon(name: icon, size: 23).foregroundStyle(store.screen == screen ? accent : ink.opacity(0.5)).frame(width: 48, height: 48)
-                .background(store.screen == screen ? accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 15))
-        }.buttonStyle(.plain).accessibilityLabel(label).accessibilityAddTraits(store.screen == screen ? .isSelected : [])
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) { NativeIcon(name: "search", size: 14); TextField("검색", text: $store.query).font(.system(size: 12)).accessibilityLabel("파일 검색") }
+                .foregroundStyle(.secondary).padding(9).background(.black, in: RoundedRectangle(cornerRadius: 3)).padding(.bottom, 6)
+            navigation(.library, "book-open", "서재") { category = 0 }
+            navigation(.today, "calendar-days", "수업") {}
+            navigation(.campus, "globe", "학교") {}
+            Button(action: store.chooseFolder) { Label("iCloud Drive", systemImage: "icloud").font(.system(size: 12)).padding(.vertical, 14) }.padding(.horizontal, 8)
+            HStack(spacing: 12) {
+                Button { category = 1; store.screen = .library } label: { Label("최근 목록", systemImage: "clock.fill") }
+                Button { category = 2; store.screen = .library } label: { Label("즐겨찾기", systemImage: "star.fill") }
+            }.font(.system(size: 11, weight: .medium)).foregroundStyle(accent).padding(.top, 16).padding(.bottom, 8)
+            ScrollView {
+                VStack(spacing: 2) { ForEach(store.recent.prefix(15), id: \.self) { path in
+                    Button { store.open(store.entry(path)) } label: {
+                        HStack(spacing: 10) {
+                            DocumentThumbnail(entry: store.entry(path)).frame(width: 23, height: 30)
+                            Text(store.entry(path).displayName.replacingOccurrences(of: ".pdf", with: "")).font(.system(size: 11)).lineLimit(1)
+                            Spacer(minLength: 0)
+                        }.padding(.vertical, 6).padding(.horizontal, 5).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                } }
+            }
+            Spacer(minLength: 0)
+            HStack { IconAction(icon: "settings-2", label: "설정") { store.screen = .settings }; Spacer(); IconAction(icon: "chevron-left", label: "사이드바 접기") { showSidebar = false } }
+        }.padding(.horizontal, 12).padding(.top, 10).background(Color(white: 0.145))
     }
-    @ViewBuilder private var library: some View {
-        if !store.hasRoot {
-            VStack(spacing: 24) { folderArt(size: 130); Button("폴더 연결", action: store.chooseFolder).buttonStyle(.borderedProminent).tint(accent) }
-                .frame(maxWidth: .infinity, minHeight: 350)
-        } else {
-            HStack(spacing: 10) {
-                IconAction(icon: "arrow-left", label: "상위 폴더", disabled: store.path.isEmpty, action: store.parent)
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
-                        Button(store.rootName ?? "InkDrive") { store.navigate("") }.font(.subheadline.weight(.semibold)).frame(minHeight: 44)
-                        ForEach(Array(store.breadcrumbs.enumerated()), id: \.offset) { index, part in
-                            NativeIcon(name: "chevron-right", size: 14).foregroundStyle(.secondary)
-                            Button(LibraryEntry.folderTitle(part)) { store.navigate(store.breadcrumbs.prefix(index + 1).joined(separator: "/")) }.font(.subheadline).frame(minHeight: 44)
+    private func navigation(_ screen: LibraryScreen, _ icon: String, _ label: String, action: @escaping () -> Void) -> some View {
+        Button { store.screen = screen; action(); store.refresh() } label: {
+            HStack(spacing: 12) { NativeIcon(name: icon, size: 18); Text(label).font(.system(size: 13, weight: .medium)); Spacer() }
+                .foregroundStyle(store.screen == screen ? accent : ink).padding(.horizontal, 9).frame(height: 40)
+                .background(store.screen == screen ? .black : .clear, in: RoundedRectangle(cornerRadius: 3))
+        }.buttonStyle(.plain).accessibilityLabel(label)
+    }
+    private var header: some View {
+        HStack {
+            if !showSidebar { IconAction(icon: "panel-left", label: "사이드바 펼치기") { showSidebar = true } }
+            if store.screen == .library && !store.path.isEmpty { IconAction(icon: "chevron-left", label: "상위 폴더", action: store.parent) }
+            Spacer()
+            Text(store.screen == .library ? (category == 1 ? "최근 목록" : category == 2 ? "즐겨찾기" : store.breadcrumbs.last.map(LibraryEntry.folderTitle) ?? "문서") : store.screen == .today ? "수업" : store.screen == .campus ? "학교" : "설정").font(.system(size: 14, weight: .semibold))
+            Spacer()
+            if store.screen == .library {
+                IconAction(icon: selecting ? "x" : "circle-check", label: selecting ? "선택 완료" : "문서 선택") { selecting.toggle(); selected.removeAll() }
+            }
+        }.padding(.horizontal, 12).frame(height: 48)
+    }
+    private var library: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                HStack {
+                    if selecting {
+                        Button("모두 선택") { selected = Set(shown.map(\.path)) }.font(.system(size: 12))
+                        Text("\(selected.count)").font(.system(size: 12)).foregroundStyle(.secondary)
+                        Spacer()
+                        Button { for path in selected { store.toggleFavorite(path) }; selecting = false; selected.removeAll() } label: { NativeIcon(name: "star", size: 18).frame(width: 44, height: 44) }.accessibilityLabel("선택한 문서 즐겨찾기 전환")
+                    } else {
+                        Spacer()
+                        ForEach(Array(["전체", "PDF", "자료"].enumerated()), id: \.offset) { index, name in
+                            Button(name) { fileFilter = index }.font(.system(size: 12, weight: fileFilter == index ? .semibold : .regular)).foregroundStyle(fileFilter == index ? accent : Color.secondary).frame(minWidth: 36, minHeight: 44)
                         }
+                        Spacer()
+                        IconAction(icon: "arrow-down-wide-narrow", label: "최근 사용순 정렬") { sortRecent.toggle() }
+                    }
+                }.padding(.horizontal, 20).frame(height: 38)
+                if !store.hasRoot {
+                    VStack(spacing: 22) { FolderGlyph(color: Color(red: 0.72, green: 0.64, blue: 0.97)).frame(width: 100, height: 82); Button("폴더 연결", action: store.chooseFolder).buttonStyle(.bordered).tint(accent) }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112, maximum: 154), spacing: 24)], alignment: .leading, spacing: 28) {
+                            ForEach(Array(shown.enumerated()), id: \.element.id) { index, entry in tile(entry, index: index) }
+                        }.padding(.horizontal, 22).padding(.top, 12).padding(.bottom, 100)
+                        if shown.isEmpty { Text("비어 있어요").font(.system(size: 12)).foregroundStyle(.secondary).padding(50) }
                     }
                 }
-                HStack(spacing: 8) { NativeIcon(name: "search", size: 18).foregroundStyle(.secondary); TextField("검색", text: $store.query).font(.subheadline).accessibilityLabel("파일 검색") }
-                    .padding(.horizontal, 12).frame(width: 190, height: 44).background(.white, in: RoundedRectangle(cornerRadius: 13))
-            }.tint(ink.opacity(0.8))
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 144, maximum: 165), spacing: 18)], alignment: .leading, spacing: 18) {
-                ForEach(store.filtered) { entry in
-                    Button { store.open(entry) } label: {
-                        VStack(spacing: 14) {
-                            if entry.directory { folderArt(size: 108) }
-                            else { NativeIcon(name: "file-text", size: 42).foregroundStyle(accent.opacity(0.6)).frame(width: 68, height: 86).background(canvas, in: RoundedRectangle(cornerRadius: 7)).overlay(RoundedRectangle(cornerRadius: 7).stroke(ink.opacity(0.08))) }
-                            Text(entry.displayName.replacingOccurrences(of: ".pdf", with: "", options: .caseInsensitive)).font(.system(size: 13, weight: .medium)).lineLimit(2).multilineTextAlignment(.center).frame(height: 36)
-                        }.frame(maxWidth: .infinity).padding(.vertical, 16).padding(.horizontal, 8).background(.white, in: RoundedRectangle(cornerRadius: 17)).overlay(RoundedRectangle(cornerRadius: 17).stroke(ink.opacity(0.07)))
-                    }.buttonStyle(.plain).accessibilityLabel(entry.displayName)
-                }
             }
-            if store.filtered.isEmpty { Text(store.query.isEmpty ? "비어 있어요" : "검색 결과 없음").font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 180) }
+            if showAdd {
+                VStack(alignment: .trailing, spacing: 10) {
+                    addAction("새 폴더", "folder-plus") { form = CreationRequest(folder: true) }
+                    addAction("새 노트", "file-text") { form = CreationRequest(folder: false) }
+                    addAction("PDF 가져오기", "square.and.arrow.down") { store.choosePDF() }
+                }.padding(.trailing, 28).padding(.bottom, 86).transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            Button { withAnimation(.easeOut(duration: 0.18)) { showAdd.toggle() } } label: {
+                NativeIcon(name: showAdd ? "x" : "plus", size: 28).foregroundStyle(.white).frame(width: 54, height: 54).background(accent, in: Circle()).shadow(color: .black.opacity(0.2), radius: 6, y: 2)
+            }.accessibilityLabel("새 문서 메뉴").padding(24)
         }
+    }
+    private func addAction(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+        Button { showAdd = false; action() } label: { HStack(spacing: 12) { Text(title).font(.system(size: 13)); NativeIcon(name: icon, size: 18).frame(width: 40, height: 40).background(accent, in: Circle()) }.foregroundStyle(.white).padding(.leading, 14).background(Color(white: 0.18), in: Capsule()) }.disabled(!store.hasRoot && icon != "square.and.arrow.down")
+    }
+    private func tile(_ entry: LibraryEntry, index: Int) -> some View {
+        VStack(spacing: 8) {
+            Button {
+                if selecting { if selected.contains(entry.path) { selected.remove(entry.path) } else { selected.insert(entry.path) } }
+                else { store.open(entry) }
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if entry.directory { FolderGlyph(color: Color(uiColor: UIColor(hex: store.folderColors[entry.path] ?? folderPalette[index % folderPalette.count]))).frame(width: 104, height: 82) }
+                        else { DocumentThumbnail(entry: entry).shadow(color: .black.opacity(0.18), radius: 2, y: 1) }
+                    }.frame(maxWidth: .infinity).frame(height: 148)
+                    if store.favorites.contains(entry.path) { Image(systemName: "star.fill").font(.system(size: 17)).foregroundStyle(entry.directory ? Color.pink : accent).offset(x: -3, y: -2) }
+                    if selecting { Image(systemName: selected.contains(entry.path) ? "checkmark.circle.fill" : "circle.fill").foregroundStyle(selected.contains(entry.path) ? accent : .white).background(Circle().stroke(.black, lineWidth: 1)).offset(x: -5, y: 125) }
+                }.opacity(selecting && !selected.contains(entry.path) ? 0.55 : 1)
+            }.buttonStyle(.plain).accessibilityLabel(entry.displayName)
+            HStack(spacing: 3) {
+                Text(entry.displayName.replacingOccurrences(of: ".pdf", with: "", options: .caseInsensitive)).font(.system(size: 11)).lineLimit(2).multilineTextAlignment(.center).frame(maxWidth: .infinity, minHeight: 29)
+                Menu {
+                    Button(store.favorites.contains(entry.path) ? "즐겨찾기 해제" : "즐겨찾기") { store.toggleFavorite(entry.path) }
+                    if entry.directory { ForEach(folderPalette, id: \.self) { color in Button(color) { store.setFolderColor(color, path: entry.path) } } }
+                } label: { NativeIcon(name: "chevron-down", size: 12).foregroundStyle(.secondary).frame(width: 26, height: 32) }.accessibilityLabel(entry.displayName + " 메뉴")
+            }
+        }.frame(maxWidth: .infinity)
     }
     private var today: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { Text(store.date).font(.subheadline).foregroundStyle(.secondary); Spacer(); IconAction(icon: "folder-open", label: "정리 결과", disabled: !store.hasRoot) { store.screen = .library; store.navigate("AI") } }
-            if store.lessons.isEmpty { Text("수업 없음").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 200) }
+            Text(store.date).font(.system(size: 12)).foregroundStyle(.secondary)
             ForEach(store.lessons, id: \.id) { lesson in
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 8) { Text(lesson.subject).font(.caption).foregroundStyle(.secondary); Text(lesson.title).font(.headline) }
-                        Spacer(); Text(lesson.endedAt == nil ? "진행 중" : "종료").font(.caption).padding(8).background(canvas, in: RoundedRectangle(cornerRadius: 8))
-                    }
-                    HStack(spacing: 8) {
-                        IconAction(icon: "pen-tool", label: "필기 열기") { store.document = OpenDocument(path: lesson.pdf, externalURL: nil) }
-                        IconAction(icon: "play", label: "녹음본 듣기", disabled: lesson.recordings.isEmpty || store.activeRecording) { do { try store.showRecordings(lesson.pdf) } catch { store.message = error.localizedDescription } }
-                        IconAction(icon: "plus", label: "녹음 가져오기", disabled: store.activeRecording) { store.importRecording(lesson) }
-                        Button(lesson.endedAt == nil ? "수업 종료" : "다시 열기") { store.finishLesson(lesson) }.buttonStyle(.bordered).tint(accent).frame(minHeight: 44)
-                    }
-                }.padding(22).background(.white, in: RoundedRectangle(cornerRadius: 18))
+                HStack { VStack(alignment: .leading, spacing: 6) { Text(lesson.subject).font(.caption).foregroundStyle(.secondary); Text(lesson.title).font(.system(size: 14)) }; Spacer()
+                    IconAction(icon: "pen-tool", label: "필기 열기") { store.document = OpenDocument(path: lesson.pdf, externalURL: nil) }
+                    IconAction(icon: "play", label: "녹음본 듣기", disabled: lesson.recordings.isEmpty || store.activeRecording) { do { try store.showRecordings(lesson.pdf) } catch { store.message = error.localizedDescription } }
+                }.padding(16).background(Color(white: 0.15), in: RoundedRectangle(cornerRadius: 5))
             }
         }
     }
     private var settings: some View {
         VStack(alignment: .leading, spacing: 20) {
-            VStack(alignment: .leading, spacing: 14) { Text(store.rootName ?? "연결 안 됨").font(.headline); Button("폴더 선택", action: store.chooseFolder).buttonStyle(.bordered).tint(accent).disabled(store.activeRecording) }
-                .padding(22).frame(maxWidth: .infinity, alignment: .leading).background(.white, in: RoundedRectangle(cornerRadius: 18))
-            VStack(alignment: .leading, spacing: 10) { Text("22:00").font(.title2.weight(.semibold)); Text("전사 · 노트 · 문제").font(.subheadline).foregroundStyle(.secondary) }
-                .padding(22).frame(maxWidth: .infinity, alignment: .leading).background(.white, in: RoundedRectangle(cornerRadius: 18))
-        }
+            Text(store.rootName ?? "연결 안 됨").font(.headline)
+            Button("폴더 선택", action: store.chooseFolder).disabled(store.activeRecording)
+            Text("22:00 · 전사 · 노트 · 문제").font(.system(size: 13)).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
-    private func folderArt(size: CGFloat) -> some View {
-        Group { if let image = UIImage(named: "folder-art") { Image(uiImage: image).resizable().scaledToFit() } }
-            .frame(width: size, height: size * 0.8).accessibilityHidden(true)
+}
+
+private struct FolderGlyph: View {
+    var color: Color
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 4).fill(color.opacity(0.85)).frame(width: g.size.width * 0.5, height: g.size.height * 0.3)
+                RoundedRectangle(cornerRadius: 5).fill(color.opacity(0.8)).padding(.top, g.size.height * 0.12)
+                RoundedRectangle(cornerRadius: 5).fill(color).padding(.top, g.size.height * 0.24)
+            }
+        }.accessibilityHidden(true)
+    }
+}
+
+private struct DocumentThumbnail: View {
+    @EnvironmentObject private var store: NativeLibraryStore
+    let entry: LibraryEntry
+    @State private var image: UIImage?
+    private static let cache = NSCache<NSString, UIImage>()
+    var body: some View {
+        Group { if let image { Image(uiImage: image).resizable().scaledToFit() }
+            else { NativeIcon(name: "file-text", size: 28).foregroundStyle(Color.gray).frame(width: 80, height: 112).background(Color(white: 0.92), in: RoundedRectangle(cornerRadius: 3)) } }
+            .task(id: entry.path) {
+                guard entry.path.lowercased().hasSuffix(".pdf"), let scope = try? store.repository.access(), let url = try? FileNames.child(entry.path, in: scope.url) else { return }
+                let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?.timeIntervalSince1970 ?? 0
+                let key = (url.path + String(date)) as NSString
+                if let cached = Self.cache.object(forKey: key) { image = cached; return }
+                // Render only visible LazyVGrid cells; never hydrate every iCloud document at startup.
+                await Task.yield()
+                guard !Task.isCancelled, let page = PDFDocument(url: url)?.page(at: 0) else { return }
+                let preview = page.thumbnail(of: CGSize(width: 240, height: 296), for: .cropBox)
+                Self.cache.setObject(preview, forKey: key); image = preview
+                withExtendedLifetime(scope) {}
+            }
     }
 }
 

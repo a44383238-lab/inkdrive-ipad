@@ -15,14 +15,14 @@ final class InkColorButton: UIButton {
         #endif
         return UIImage(named: name, in: bundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
     }
-    static func button(_ icon: String, label: String) -> UIButton {
-        let item = UIButton(type: .system)
+    static func button(_ icon: String, label: String, compact: Bool = false) -> UIButton {
+        let item = InkColorButton(type: .system)
         item.setImage(image(icon), for: .normal)
-        item.tintColor = UIColor(hex: "#34465D")
+        item.tintColor = UIColor(white: 0.88, alpha: 1)
         item.accessibilityLabel = label
-        item.layer.cornerRadius = 12
-        item.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        item.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        item.layer.cornerRadius = compact ? 3 : 10
+        item.heightAnchor.constraint(equalToConstant: compact ? 36 : 44).isActive = true
+        item.widthAnchor.constraint(equalToConstant: compact ? 36 : 44).isActive = true
         return item
     }
 }

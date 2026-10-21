@@ -27,6 +27,9 @@ enum LibraryScreen { case library, today, campus, settings }
     @Published var lessons: [LessonRecord] = []
     @Published var rootName: String?
     @Published var query = ""
+    @Published var favorites = Set(UserDefaults.standard.stringArray(forKey: "library.favorites") ?? [])
+    @Published var recent = UserDefaults.standard.stringArray(forKey: "library.recent") ?? []
+    @Published var folderColors = UserDefaults.standard.dictionary(forKey: "library.folder-colors") as? [String: String] ?? [:]
     @Published var date = NativeLibraryStore.today()
     @Published var busy = false
     @Published var message: String?
@@ -104,6 +107,10 @@ enum LibraryScreen { case library, today, campus, settings }
     }
     func parent() { navigate(breadcrumbs.dropLast().joined(separator: "/")) }
     func open(_ entry: LibraryEntry) {
+        if !entry.directory {
+            recent.removeAll { $0 == entry.path }; recent.insert(entry.path, at: 0)
+            recent = Array(recent.prefix(30)); UserDefaults.standard.set(recent, forKey: "library.recent")
+        }
         if entry.directory { navigate(entry.path) }
         else if entry.path.lowercased().hasSuffix(".pdf") { document = OpenDocument(path: entry.path, externalURL: nil) }
         else if !["md", "txt", "json", "csv"].contains(URL(fileURLWithPath: entry.path).pathExtension.lowercased()) {
@@ -138,6 +145,16 @@ enum LibraryScreen { case library, today, campus, settings }
         if folder { try repository.createFolder(parent: path, name: name) }
         else { _ = try repository.createNote(parent: path, name: name, template: template.rawValue) }
         refresh()
+    }
+    func toggleFavorite(_ path: String) {
+        if favorites.contains(path) { favorites.remove(path) } else { favorites.insert(path) }
+        UserDefaults.standard.set(Array(favorites), forKey: "library.favorites")
+    }
+    func setFolderColor(_ color: String, path: String) {
+        folderColors[path] = color; UserDefaults.standard.set(folderColors, forKey: "library.folder-colors")
+    }
+    func entry(_ path: String) -> LibraryEntry {
+        LibraryEntry(name: URL(fileURLWithPath: path).lastPathComponent, path: path, directory: false)
     }
     func chooseFolder() {
         guard !activeRecording, !pendingRecording else { message = "녹음 종료·복구 후 폴더를 바꿔 주세요."; return }
@@ -176,7 +193,15 @@ enum LibraryScreen { case library, today, campus, settings }
     func showRecordings(_ pdf: String, from presenter: UIViewController? = nil) throws {
         let source = try repository.recordings(for: pdf)
         let browser = RecordingBrowserController(rows: source.rows, scope: source.scope)
-        let navigation = UINavigationController(rootViewController: browser); navigation.modalPresentationStyle = .pageSheet
+        if let editor = presenter as? EditorViewController { editor.presentRecordingBrowser(browser); return }
+        let navigation = UINavigationController(rootViewController: browser); navigation.modalPresentationStyle = presenter == nil ? .pageSheet : .popover
+        navigation.overrideUserInterfaceStyle = .dark
+        navigation.preferredContentSize = CGSize(width: 370, height: 420)
+        if let presenter {
+            navigation.popoverPresentationController?.sourceView = presenter.view
+            navigation.popoverPresentationController?.sourceRect = CGRect(x: presenter.view.bounds.width - 110, y: presenter.view.safeAreaInsets.top + 38, width: 44, height: 1)
+            navigation.popoverPresentationController?.delegate = presenter as? UIPopoverPresentationControllerDelegate
+        }
         navigation.sheetPresentationController?.detents = [.medium(), .large()]; navigation.sheetPresentationController?.prefersGrabberVisible = true
         let target = try presenter ?? Self.presenter()
         guard target.presentedViewController == nil else { throw InkError.busy }

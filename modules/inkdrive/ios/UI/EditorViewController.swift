@@ -20,6 +20,18 @@ import AVFoundation
     private var configurations: [String: ToolSettings] = [:]
     var settings: ToolSettings { configurations[tool.rawValue] ?? ToolSettings() }
     private let floating = UIView()
+    private let toolbarStack = UIStackView()
+    private var toolbarVertical = UserDefaults.standard.bool(forKey: "inkdrive.toolbar-vertical")
+    private var toolAxisConstraint: NSLayoutConstraint?
+    private let pageSlider = UISlider()
+    private let pageNumber = UILabel()
+    private let pagePreview = UIImageView()
+    private var pageObserver: NSObjectProtocol?
+    private let recordingStrip = UIStackView()
+    private var recordingBrowser: RecordingBrowserController?
+    private let dockSeek = UISlider()
+    private let dockPlay = InkIcons.button("play", label: "녹음 재생", compact: true)
+    private let dockTime = UILabel()
     private let viewport = NotebookViewport()
     private var visibleTools: [EditorTool] = EditorTool.allCases
     private let recordButton = UIButton(type: .system)
@@ -47,6 +59,14 @@ import AVFoundation
         }
         if let bytes = UserDefaults.standard.data(forKey: "inkdrive.tools.v1"),
            let decoded = try? JSONDecoder().decode([String: ToolSettings].self, from: bytes) { configurations = decoded }
+        if UserDefaults.standard.object(forKey: "inkdrive.tool-presets.v2") == nil {
+            let defaults: [(EditorTool, String, Double, Double)] = [(.pen, "#202020", 0.5, 1), (.pen, "#2455D6", 0.5, 1), (.pen, "#DB3249", 0.5, 1), (.marker, "#79E047", 15, 0.4)]
+            let presets = defaults.compactMap { type, color, width, opacity -> Data? in
+                var value = ToolSettings(); value.color = color; value.width = width; value.opacity = opacity
+                return try? JSONEncoder().encode(ToolPreset(tool: type, settings: value))
+            }
+            UserDefaults.standard.set(presets, forKey: "inkdrive.tool-presets.v2")
+        }
         if configurations[EditorTool.marker.rawValue] == nil {
             var marker = ToolSettings(); marker.color = "#FFE247"; marker.width = 18; marker.opacity = 0.45
             configurations[EditorTool.marker.rawValue] = marker
@@ -54,24 +74,26 @@ import AVFoundation
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = UIColor(white: 0.94, alpha: 1)
+        super.viewDidLoad(); view.backgroundColor = UIColor(white: 0.105, alpha: 1); overrideUserInterfaceStyle = .dark; view.tintColor = UIColor(hex: "#F4CA52")
         provider.editor = self
         pdfView.isInMarkupMode = true
         pdfView.pageOverlayViewProvider = provider
         pdfView.document = session.model.pdf
-        pdfView.displayMode = .singlePageContinuous; pdfView.displayDirection = .vertical
+        pdfView.displayMode = UserDefaults.standard.bool(forKey: "inkdrive.continuous-pages") ? .singlePageContinuous : .singlePage
+        pdfView.displayDirection = .vertical
+        pdfView.backgroundColor = UIColor(white: 0.12, alpha: 1)
         pdfView.displayBox = .cropBox; pdfView.autoScales = true; pdfView.pageShadowsEnabled = true
         pdfView.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(pdfView)
-        let header = UIStackView(); header.spacing = 12; header.alignment = .center
+        let header = UIStackView(); header.spacing = 4; header.alignment = .center
         header.addArrangedSubview(iconButton("arrow-left", label: "서재로", action: #selector(closeEditor)))
-        status.text = session.store.url.deletingPathExtension().lastPathComponent; status.font = .systemFont(ofSize: 14, weight: .medium); status.numberOfLines = 1; status.lineBreakMode = .byTruncatingMiddle
+        status.text = session.store.url.deletingPathExtension().lastPathComponent; status.font = .systemFont(ofSize: 12, weight: .medium); status.numberOfLines = 1; status.lineBreakMode = .byTruncatingMiddle
         status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         header.addArrangedSubview(status)
         recordButton.accessibilityLabel = "녹음 시작"
         recordButton.titleLabel?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
-        recordButton.layer.cornerRadius = 13; recordButton.backgroundColor = UIColor(hex: "#FFF0F1")
-        recordButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        recordButton.widthAnchor.constraint(equalToConstant: 104).isActive = true
+        recordButton.layer.cornerRadius = 3; recordButton.backgroundColor = .clear
+        recordButton.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        recordButton.widthAnchor.constraint(equalToConstant: 76).isActive = true
         recordButton.addTarget(self, action: #selector(toggleRecording), for: .touchUpInside)
         header.addArrangedSubview(recordButton)
         if recordingsAction != nil { header.addArrangedSubview(iconButton("list-music", label: "녹음 목록", action: #selector(showRecordings))) }
@@ -80,22 +102,22 @@ import AVFoundation
         }
         refreshRecordingButton()
         header.addArrangedSubview(iconButton("layers", label: "페이지", action: #selector(showPages)))
-        header.addArrangedSubview(iconButton("save", label: "저장", action: #selector(saveNow)))
+        header.addArrangedSubview(iconButton("sliders-horizontal", label: "보기 설정", action: #selector(displaySettings)))
         header.addArrangedSubview(iconButton("ellipsis", label: "문서 메뉴", action: #selector(more)))
         header.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(header)
         let tabScroll = UIScrollView(); tabScroll.showsHorizontalScrollIndicator = false; tabScroll.translatesAutoresizingMaskIntoConstraints = false
-        tabs.axis = .horizontal; tabs.spacing = 6; tabs.translatesAutoresizingMaskIntoConstraints = false; tabScroll.addSubview(tabs); view.addSubview(tabScroll)
+        tabs.axis = .horizontal; tabs.spacing = 1; tabs.translatesAutoresizingMaskIntoConstraints = false; tabScroll.addSubview(tabs); view.addSubview(tabScroll)
         let hasTabs = openDocument != nil
         NSLayoutConstraint.activate([
-            tabScroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 2), tabScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16), tabScroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16), tabScroll.heightAnchor.constraint(equalToConstant: hasTabs ? 44 : 0),
+            tabScroll.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 2), tabScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16), tabScroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16), tabScroll.heightAnchor.constraint(equalToConstant: hasTabs ? 28 : 0),
             tabs.leadingAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.leadingAnchor), tabs.trailingAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.trailingAnchor), tabs.topAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.topAnchor), tabs.bottomAnchor.constraint(equalTo: tabScroll.contentLayoutGuide.bottomAnchor), tabs.heightAnchor.constraint(equalTo: tabScroll.frameLayoutGuide.heightAnchor),
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 6),
+            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 0),
             header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16), header.heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
-            pdfView.topAnchor.constraint(equalTo: tabScroll.bottomAnchor, constant: 4), pdfView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16), header.heightAnchor.constraint(equalToConstant: 36),
+            pdfView.topAnchor.constraint(equalTo: tabScroll.bottomAnchor, constant: 0), pdfView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             pdfView.leadingAnchor.constraint(equalTo: view.leadingAnchor), pdfView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
-        rebuildTabs(); buildToolbar()
+        rebuildTabs(); buildToolbar(); buildPageScrubber(); buildRecordingDock()
         let pencil = UIPencilInteraction(); pencil.delegate = self; view.addInteraction(pencil)
         let undo = UITapGestureRecognizer(target: self, action: #selector(undoAction))
         undo.numberOfTouchesRequired = 2; undo.numberOfTapsRequired = 2; undo.delegate = self
@@ -111,7 +133,7 @@ import AVFoundation
             }
         })
     }
-    deinit { observerTokens.forEach(NotificationCenter.default.removeObserver); recordingTimer?.invalidate() }
+    deinit { observerTokens.forEach(NotificationCenter.default.removeObserver); recordingTimer?.invalidate(); if let pageObserver { NotificationCenter.default.removeObserver(pageObserver) } }
     private func bindSession() {
         session.didChange = { [weak self] in self?.refresh() }
         session.statusChanged = { [weak self] value in self?.status.accessibilityValue = value }
@@ -124,7 +146,8 @@ import AVFoundation
             tab.setTitle(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent, for: .normal)
             tab.titleLabel?.font = .systemFont(ofSize: 12, weight: path == documentPath ? .semibold : .regular)
             tab.contentEdgeInsets = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
-            tab.backgroundColor = path == documentPath ? UIColor(hex: "#DCE6F8") : UIColor(hex: "#EDF1F6"); tab.layer.cornerRadius = 10
+            tab.backgroundColor = path == documentPath ? UIColor(white: 0.07, alpha: 1) : .clear; tab.layer.cornerRadius = 0
+            tab.tintColor = path == documentPath ? UIColor(hex: "#F4CA52") : UIColor(white: 0.55, alpha: 1)
             tab.accessibilityLabel = "문서 탭 " + path; tab.accessibilityValue = path == documentPath ? "선택됨" : nil
             tab.addAction(UIAction { [weak self] _ in Task { @MainActor in await self?.switchToDocument(path) } }, for: .touchUpInside)
             if path != documentPath { tab.menu = UIMenu(children: [UIAction(title: "탭 닫기", attributes: .destructive) { [weak self] _ in
@@ -151,6 +174,7 @@ import AVFoundation
         defer { switchingDocument = false; view.isUserInteractionEnabled = true }
         do {
             provider.commitAll(); try await session.flush()
+            recordingBrowser?.shutdown(); recordingBrowser = nil; recordingStrip.isHidden = true
             if let page = pdfView.currentPage { savedPages[documentPath] = session.model.pdf.index(for: page) }
             let next = try await openDocument(path)
             // Drain outgoing overlays while they still refer to their original session.
@@ -159,16 +183,16 @@ import AVFoundation
             pdfView.document = next.model.pdf; pdfView.autoScales = true
             if let page = next.model.pdf.page(at: min(savedPages[path] ?? 0, next.model.pages.count - 1)) { pdfView.go(to: page) }
             status.text = next.store.url.deletingPathExtension().lastPathComponent
-            rebuildTabs(); documentsChanged?(documentPaths); provider.applyTool()
+            rebuildTabs(); documentsChanged?(documentPaths); provider.applyTool(); updatePageNumber()
         } catch { showError(error) }
     }
     private func refreshRecordingButton() {
         let service = RecordingService.shared
         recordButton.isEnabled = !startingRecording
-        recordButton.tintColor = UIColor(hex: "#CA4759")
+        recordButton.tintColor = service.active ? UIColor(hex: "#F46B75") : UIColor(hex: "#E8C65A")
         recordButton.setImage(InkIcons.image(service.active ? "square" : "mic"), for: .normal)
         let elapsed = Int(service.seconds)
-        recordButton.setTitle(service.active ? String(format: "  %02d:%02d", elapsed / 60, elapsed % 60) : "  녹음", for: .normal)
+        recordButton.setTitle(service.active ? String(format: "  %02d:%02d", elapsed / 60, elapsed % 60) : "", for: .normal)
         recordButton.accessibilityLabel = service.active ? "녹음 종료" : "녹음 시작"
         recordButton.accessibilityValue = service.active ? "녹음 중" : nil
     }
@@ -184,6 +208,7 @@ import AVFoundation
                     guard canRecord, let recordingAction else {
                         throw NSError(domain: "InkDrive", code: 5, userInfo: [NSLocalizedDescriptionKey: "서재의 PDF를 열면 바로 녹음할 수 있어요."])
                     }
+                    recordingBrowser?.shutdown(); recordingBrowser = nil; recordingStrip.isHidden = true
                     try await recordingAction()
                 }
             } catch {
@@ -198,36 +223,147 @@ import AVFoundation
             }
         }
     }
+    private func buildRecordingDock() {
+        recordingStrip.axis = .horizontal; recordingStrip.spacing = 5; recordingStrip.alignment = .center
+        recordingStrip.backgroundColor = UIColor(white: 0.2, alpha: 0.9); recordingStrip.layer.cornerRadius = 4
+        recordingStrip.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(recordingStrip)
+        let back = iconButton("skip-back", label: "녹음 10초 뒤로", action: #selector(dockBack))
+        dockPlay.addTarget(self, action: #selector(dockToggle), for: .touchUpInside)
+        let next = iconButton("skip-forward", label: "녹음 10초 앞으로", action: #selector(dockForward))
+        dockTime.text = "00:00"; dockTime.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+        dockSeek.accessibilityLabel = "녹음 빠른 재생 위치"; dockSeek.minimumValue = 0; dockSeek.maximumValue = 1; dockSeek.isEnabled = false
+        dockSeek.addTarget(self, action: #selector(dockScrub), for: .valueChanged)
+        [back, dockPlay, next, dockTime, dockSeek, iconButton("list-music", label: "녹음 설정과 목록", action: #selector(showRecordings))].forEach(recordingStrip.addArrangedSubview)
+        NSLayoutConstraint.activate([recordingStrip.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12), recordingStrip.topAnchor.constraint(equalTo: pdfView.topAnchor, constant: 8), recordingStrip.widthAnchor.constraint(equalToConstant: 370), recordingStrip.heightAnchor.constraint(equalToConstant: 36)])
+        dockPlay.isEnabled = false; recordingStrip.isHidden = true
+    }
+    func presentRecordingBrowser(_ candidate: RecordingBrowserController) {
+        let browser: RecordingBrowserController
+        if let existing = recordingBrowser, existing.rows.map(\.path) == candidate.rows.map(\.path) { browser = existing }
+        else { recordingBrowser?.shutdown(); recordingBrowser = candidate; browser = candidate }
+        browser.keepPlayingWhenHidden = true
+        browser.playbackChanged = { [weak self] current, duration, playing in
+            guard let self else { return }
+            self.dockTime.text = RecordingBrowserController.timestamp(current)
+            self.dockSeek.maximumValue = Float(max(1, duration)); self.dockSeek.isEnabled = duration > 0
+            if !self.dockSeek.isTracking { self.dockSeek.value = Float(current.isFinite ? current : 0) }
+            self.dockPlay.isEnabled = duration > 0
+            self.dockPlay.setImage(InkIcons.image(playing ? "pause" : "play"), for: .normal)
+            self.dockPlay.accessibilityLabel = playing ? "녹음 일시정지" : "녹음 재생"
+        }
+        recordingStrip.isHidden = false
+        let navigation = UINavigationController(rootViewController: browser)
+        navigation.modalPresentationStyle = .popover; navigation.overrideUserInterfaceStyle = .dark
+        navigation.preferredContentSize = CGSize(width: 370, height: 420)
+        navigation.popoverPresentationController?.sourceView = recordingStrip
+        navigation.popoverPresentationController?.sourceRect = recordingStrip.bounds
+        navigation.popoverPresentationController?.delegate = self
+        present(navigation, animated: true)
+    }
+    @objc private func dockToggle() { recordingBrowser?.toggleFromDock() }
+    @objc private func dockScrub() { recordingBrowser?.seekFromDock(Double(dockSeek.value)) }
+    @objc private func dockBack() { recordingBrowser?.seekFromDock(Double(dockSeek.value) - 10) }
+    @objc private func dockForward() { recordingBrowser?.seekFromDock(Double(dockSeek.value) + 10) }
+    private func updateToolbarAxis() {
+        toolAxisConstraint?.isActive = false
+        toolbarStack.axis = toolbarVertical ? .vertical : .horizontal
+        tools.axis = toolbarStack.axis
+        toolAxisConstraint = toolbarVertical ? tools.widthAnchor.constraint(equalTo: toolScroll.frameLayoutGuide.widthAnchor) : tools.heightAnchor.constraint(equalTo: toolScroll.frameLayoutGuide.heightAnchor)
+        toolAxisConstraint?.isActive = true
+        // Cross-axis size is supplied by the toolbar's constrained stack.
+        view.setNeedsLayout()
+    }
+    @objc private func rotateToolbar() {
+        toolbarVertical.toggle(); UserDefaults.standard.set(toolbarVertical, forKey: "inkdrive.toolbar-vertical")
+        updateToolbarAxis()
+    }
+    private func buildPageScrubber() {
+        pageSlider.minimumValue = 1; pageSlider.maximumValue = Float(max(2, session.model.pages.count))
+        pageSlider.tintColor = UIColor(white: 0.5, alpha: 1); pageSlider.accessibilityLabel = "빠른 페이지 이동"
+        pageSlider.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(pageSlider)
+        pageSlider.addTarget(self, action: #selector(scrubPage), for: .valueChanged)
+        pageSlider.addTarget(self, action: #selector(endScrub), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        pageNumber.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular); pageNumber.textAlignment = .center
+        pageNumber.textColor = UIColor(white: 0.8, alpha: 1); pageNumber.backgroundColor = UIColor(white: 0.22, alpha: 0.8)
+        pageNumber.layer.cornerRadius = 3; pageNumber.clipsToBounds = true
+        pageNumber.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(pageNumber)
+        pagePreview.contentMode = .scaleAspectFit; pagePreview.backgroundColor = UIColor(white: 0.15, alpha: 1)
+        pagePreview.layer.borderWidth = 6; pagePreview.layer.borderColor = UIColor(white: 0.15, alpha: 1).cgColor
+        pagePreview.isHidden = true; pagePreview.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(pagePreview)
+        NSLayoutConstraint.activate([
+            pageSlider.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28), pageSlider.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28), pageSlider.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -4), pageSlider.heightAnchor.constraint(equalToConstant: 32),
+            pageNumber.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18), pageNumber.bottomAnchor.constraint(equalTo: pageSlider.topAnchor, constant: -4), pageNumber.widthAnchor.constraint(equalToConstant: 78), pageNumber.heightAnchor.constraint(equalToConstant: 23),
+            pagePreview.centerXAnchor.constraint(equalTo: pageSlider.centerXAnchor), pagePreview.bottomAnchor.constraint(equalTo: pageSlider.topAnchor, constant: -12), pagePreview.widthAnchor.constraint(equalToConstant: 100), pagePreview.heightAnchor.constraint(equalToConstant: 126)
+        ])
+        pageObserver = NotificationCenter.default.addObserver(forName: .PDFViewPageChanged, object: pdfView, queue: .main) { [weak self] _ in Task { @MainActor in self?.updatePageNumber() } }
+        updatePageNumber()
+    }
+    private func updatePageNumber() {
+        let count = session.model.pages.count
+        let index = pdfView.currentPage.map { session.model.pdf.index(for: $0) + 1 } ?? 1
+        pageSlider.maximumValue = Float(max(2, count)); pageSlider.isEnabled = count > 1
+        if !pageSlider.isTracking { pageSlider.value = Float(index) }
+        pageNumber.text = "\(index)/\(count) 페이지"
+    }
+    @objc private func scrubPage() {
+        let index = max(0, min(session.model.pages.count - 1, Int(pageSlider.value.rounded()) - 1))
+        guard let page = session.model.pdf.page(at: index) else { return }
+        provider.commitAll(); pdfView.go(to: page)
+        pagePreview.image = page.thumbnail(of: CGSize(width: 160, height: 200), for: .cropBox); pagePreview.isHidden = false
+        updatePageNumber()
+    }
+    @objc private func endScrub() { pagePreview.isHidden = true }
+    @objc private func displaySettings() {
+        let panel = UITableViewController(style: .insetGrouped)
+        panel.preferredContentSize = CGSize(width: 310, height: 320)
+        panel.modalPresentationStyle = .popover; panel.overrideUserInterfaceStyle = .dark
+        let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 8; stack.frame = CGRect(x: 16, y: 16, width: 278, height: 280)
+        let title = UILabel(); title.text = "보기 설정"; title.font = .systemFont(ofSize: 15, weight: .medium); title.textAlignment = .center; stack.addArrangedSubview(title)
+        for (label, action) in [
+            ("한 페이지씩", { self.provider.commitAll(); self.pdfView.displayMode = .singlePage; UserDefaults.standard.set(false, forKey: "inkdrive.continuous-pages") }),
+            ("연속 페이지", { self.provider.commitAll(); self.pdfView.displayMode = .singlePageContinuous; UserDefaults.standard.set(true, forKey: "inkdrive.continuous-pages") }),
+            ("화면에 맞추기", { self.pdfView.autoScales = true }),
+            ("도구막대 가로·세로", { self.rotateToolbar() }),
+            ("저장", { self.saveNow() })
+        ] as [(String, () -> Void)] {
+            let button = UIButton(type: .system); button.setTitle(label, for: .normal); button.contentHorizontalAlignment = .leading; button.titleLabel?.font = .systemFont(ofSize: 13); button.heightAnchor.constraint(equalToConstant: 40).isActive = true
+            button.addAction(UIAction { _ in action() }, for: .touchUpInside); stack.addArrangedSubview(button)
+        }
+        panel.view.addSubview(stack)
+        panel.popoverPresentationController?.sourceView = view; panel.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.width - 66, y: view.safeAreaInsets.top + 34, width: 32, height: 1); panel.popoverPresentationController?.delegate = self
+        present(panel, animated: true)
+    }
     private func buildToolbar() {
-        floating.backgroundColor = .white; floating.layer.cornerRadius = 18
-        floating.layer.borderWidth = 1; floating.layer.borderColor = UIColor(hex: "#E1E7F0").cgColor
-        floating.layer.shadowColor = UIColor(hex: "#203653").cgColor; floating.layer.shadowOpacity = 0.08
-        floating.layer.shadowRadius = 16; floating.layer.shadowOffset = CGSize(width: 0, height: 5)
-        floating.frame = CGRect(x: 20, y: 110, width: 520, height: 56)
+        floating.backgroundColor = .black; floating.layer.cornerRadius = 5
+        floating.layer.borderWidth = 1; floating.layer.borderColor = UIColor(white: 0.25, alpha: 1).cgColor
+        floating.layer.shadowColor = UIColor(hex: "#203653").cgColor; floating.layer.shadowOpacity = 0.25
+        floating.layer.shadowRadius = 5; floating.layer.shadowOffset = CGSize(width: 0, height: 5)
+        floating.frame = CGRect(x: 180, y: 120, width: 520, height: 44)
         if let position = UserDefaults.standard.array(forKey: "inkdrive.toolbar-position") as? [Double], position.count == 2 { floating.frame.origin = CGPoint(x: position[0], y: position[1]) }
         floating.autoresizingMask = [.flexibleRightMargin, .flexibleBottomMargin]; view.addSubview(floating)
-        let stack = UIStackView(); stack.axis = .horizontal; stack.spacing = 4; stack.alignment = .center
+        let stack = toolbarStack; stack.axis = toolbarVertical ? .vertical : .horizontal; stack.spacing = 0; stack.alignment = .center
         stack.translatesAutoresizingMaskIntoConstraints = false; floating.addSubview(stack)
         NSLayoutConstraint.activate([stack.topAnchor.constraint(equalTo: floating.topAnchor, constant: 6),
             stack.bottomAnchor.constraint(equalTo: floating.bottomAnchor, constant: -6),
             stack.leadingAnchor.constraint(equalTo: floating.leadingAnchor, constant: 6),
             stack.trailingAnchor.constraint(equalTo: floating.trailingAnchor, constant: -6)])
-        let handle = InkIcons.button("grip-vertical", label: "도구막대 이동")
+        let handle = InkIcons.button("grip-vertical", label: "도구막대 이동", compact: true)
         handle.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(dragToolbar)))
         stack.addArrangedSubview(handle)
         toolScroll.showsHorizontalScrollIndicator = false
-        toolScroll.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        tools.axis = .horizontal; tools.spacing = 4; tools.translatesAutoresizingMaskIntoConstraints = false
+        toolScroll.showsVerticalScrollIndicator = false
+        tools.axis = toolbarVertical ? .vertical : .horizontal; tools.spacing = 0; tools.translatesAutoresizingMaskIntoConstraints = false
         toolScroll.addSubview(tools)
         NSLayoutConstraint.activate([tools.leadingAnchor.constraint(equalTo: toolScroll.contentLayoutGuide.leadingAnchor),
             tools.trailingAnchor.constraint(equalTo: toolScroll.contentLayoutGuide.trailingAnchor),
             tools.topAnchor.constraint(equalTo: toolScroll.contentLayoutGuide.topAnchor),
-            tools.bottomAnchor.constraint(equalTo: toolScroll.contentLayoutGuide.bottomAnchor),
-            tools.heightAnchor.constraint(equalTo: toolScroll.frameLayoutGuide.heightAnchor)])
+            tools.bottomAnchor.constraint(equalTo: toolScroll.contentLayoutGuide.bottomAnchor)])
         stack.addArrangedSubview(toolScroll)
         stack.addArrangedSubview(iconButton("undo-2", label: "실행 취소", action: #selector(undoAction)))
         stack.addArrangedSubview(iconButton("redo-2", label: "다시 실행", action: #selector(redoAction)))
         stack.addArrangedSubview(iconButton("plus", label: "도구 추가·빼기", action: #selector(manageTools)))
+        stack.addArrangedSubview(iconButton("rotate-cw", label: "도구막대 방향 전환", action: #selector(rotateToolbar)))
+        updateToolbarAxis()
         rebuildTools(); setTool(visibleTools.first ?? .pen)
     }
     private func rebuildTools() {
@@ -235,7 +371,8 @@ import AVFoundation
         toolButtons.removeAll()
         let presets = (UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []).compactMap { try? JSONDecoder().decode(ToolPreset.self, from: $0) }
         for (index, preset) in presets.enumerated() {
-            let item = InkIcons.button(preset.tool.icon, label: "즐겨찾기 \(index + 1), \(preset.settings.width) px")
+            let item = InkIcons.button(preset.tool.icon, label: "즐겨찾기 \(index + 1), \(preset.settings.width) px", compact: true)
+            item.setImage(PenNibArtwork.image(tool: preset.tool, color: preset.settings.uiColor.withAlphaComponent(1), width: preset.settings.width), for: .normal)
             item.tintColor = preset.settings.uiColor.withAlphaComponent(1)
             item.backgroundColor = preset.settings.uiColor.withAlphaComponent(0.08)
             item.addAction(UIAction { [weak self] _ in
@@ -248,7 +385,7 @@ import AVFoundation
             }]); tools.addArrangedSubview(item)
         }
         for choice in visibleTools {
-            let item = InkIcons.button(choice.icon, label: choice.label)
+            let item = InkIcons.button(choice.icon, label: choice.label, compact: true)
             item.addAction(UIAction { [weak self, weak item] _ in
                 guard let self, let item else { return }
                 if self.tool == choice { self.showToolPopover(from: item) } else { self.setTool(choice) }
@@ -260,8 +397,9 @@ import AVFoundation
     private func updateToolAppearance() {
         toolButtons.forEach { choice, item in
             let color = (configurations[choice.rawValue] ?? ToolSettings()).uiColor.withAlphaComponent(1)
-            item.tintColor = color
-            item.backgroundColor = choice == tool ? color.withAlphaComponent(0.12) : .clear
+            item.setImage(PenNibArtwork.image(tool: choice, color: color, width: (configurations[choice.rawValue] ?? ToolSettings()).width), for: .normal)
+            item.tintColor = .white
+            item.backgroundColor = choice == tool ? UIColor(white: 0.20, alpha: 1) : .clear
             item.layer.borderWidth = choice == tool ? 1 : 0
             item.layer.borderColor = color.withAlphaComponent(0.25).cgColor
             item.accessibilityValue = choice == tool ? "선택됨, 다시 누르면 설정" : nil
@@ -269,14 +407,15 @@ import AVFoundation
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        floating.frame.size.width = min(CGFloat(tools.arrangedSubviews.count * 48 + 212), view.bounds.width - 24)
+        let length = CGFloat(tools.arrangedSubviews.count * 36 + 192)
+        floating.frame.size = toolbarVertical ? CGSize(width: 48, height: min(length, view.bounds.height - view.safeAreaInsets.top - 110)) : CGSize(width: min(length, view.bounds.width - 24), height: 48)
         floating.frame.origin.x = min(max(12, floating.frame.origin.x), max(12, view.bounds.width - floating.frame.width - 12))
-        let minimumY = view.safeAreaInsets.top + (openDocument == nil ? 56 : 104)
+        let minimumY = view.safeAreaInsets.top + (openDocument == nil ? 40 : 68)
         floating.frame.origin.y = min(max(minimumY, floating.frame.origin.y), max(minimumY, view.bounds.height - floating.frame.height - view.safeAreaInsets.bottom))
         viewport.configure(pdfView)
     }
     private func iconButton(_ icon: String, label: String, action: Selector) -> UIButton {
-        let item = InkIcons.button(icon, label: label); item.addTarget(self, action: action, for: .touchUpInside); return item
+        let item = InkIcons.button(icon, label: label, compact: true); item.addTarget(self, action: action, for: .touchUpInside); return item
     }
     func setTool(_ new: EditorTool) {
         provider.commitAll()
@@ -305,6 +444,7 @@ import AVFoundation
         popover.popoverPresentationController?.delegate = self
         present(popover, animated: true)
     }
+    func popoverPresentationControllerDidDismissPopover(_ popoverPresentationController: UIPopoverPresentationController) { rebuildTools() }
     func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle { .none }
     private func persistVisibleTools() { UserDefaults.standard.set(visibleTools.map(\.rawValue), forKey: "inkdrive.visible-tools.v2") }
     private func hideTool(_ choice: EditorTool) {
@@ -315,21 +455,21 @@ import AVFoundation
     }
     @objc private func manageTools() {
         let controller = UIViewController(); controller.modalPresentationStyle = .popover
-        controller.preferredContentSize = CGSize(width: 252, height: 320); controller.view.backgroundColor = .white
+        controller.preferredContentSize = CGSize(width: 252, height: 320); controller.view.backgroundColor = UIColor(white: 0.14, alpha: 1)
         let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 6; stack.frame = CGRect(x: 16, y: 14, width: 220, height: 292); controller.view.addSubview(stack)
         for choice in EditorTool.allCases {
             let item = UIButton(type: .system)
             item.setImage(InkIcons.image(choice.icon), for: .normal)
             item.setTitle("  " + choice.label, for: .normal); item.contentHorizontalAlignment = .leading
-            item.tintColor = UIColor(hex: "#34465D"); item.layer.cornerRadius = 10
-            item.backgroundColor = visibleTools.contains(choice) ? UIColor(hex: "#EAF0FC") : UIColor(hex: "#F6F7FA")
+            item.tintColor = UIColor(white: 0.88, alpha: 1); item.layer.cornerRadius = 10
+            item.backgroundColor = visibleTools.contains(choice) ? UIColor(white: 0.25, alpha: 1) : UIColor(white: 0.17, alpha: 1)
             item.accessibilityValue = visibleTools.contains(choice) ? "추가됨" : "숨겨짐"
             item.heightAnchor.constraint(equalToConstant: 44).isActive = true
             item.addAction(UIAction { [weak self, weak item] _ in
                 guard let self else { return }
                 if self.visibleTools.contains(choice) { self.hideTool(choice) }
                 else { self.visibleTools.append(choice); self.persistVisibleTools(); self.rebuildTools() }
-                item?.backgroundColor = self.visibleTools.contains(choice) ? UIColor(hex: "#EAF0FC") : UIColor(hex: "#F6F7FA")
+                item?.backgroundColor = self.visibleTools.contains(choice) ? UIColor(white: 0.25, alpha: 1) : UIColor(white: 0.17, alpha: 1)
                 item?.accessibilityValue = self.visibleTools.contains(choice) ? "추가됨" : "숨겨짐"
             }, for: .touchUpInside)
             stack.addArrangedSubview(item)
@@ -511,8 +651,8 @@ import AVFoundation
     }
     @objc private func showPages() {
         provider.commitAll()
-        let pages = PageListController(editor: self)
-        let navigation = UINavigationController(rootViewController: pages); navigation.modalPresentationStyle = .pageSheet
+        let pages = PageOverviewController(editor: self)
+        let navigation = UINavigationController(rootViewController: pages); navigation.modalPresentationStyle = .fullScreen; navigation.overrideUserInterfaceStyle = .dark
         present(navigation, animated: true)
     }
     @objc private func more() {

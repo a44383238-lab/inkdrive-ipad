@@ -10,12 +10,12 @@ import UIKit
         self.tool = tool; self.settings = settings; self.changed = changed
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .popover
-        preferredContentSize = CGSize(width: 296, height: tool == .marker ? 370 : 320)
+        preferredContentSize = CGSize(width: 280, height: tool == .eraser ? 420 : tool == .lasso ? 180 : tool == .marker ? 560 : 520)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .white
-        let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 16
+        super.viewDidLoad(); view.backgroundColor = UIColor(white: 0.135, alpha: 1); overrideUserInterfaceStyle = .dark; view.tintColor = UIColor(hex: "#E8C65A")
+        let stack = UIStackView(); stack.axis = .vertical; stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(stack)
         NSLayoutConstraint.activate([stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20), stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20), stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 18)])
         let header = UIStackView(); header.alignment = .center
@@ -25,10 +25,12 @@ import UIKit
         hide.addAction(UIAction { [weak self] _ in guard let self else { return }; let action = self.removeTool; self.dismiss(animated: true, completion: action) }, for: .touchUpInside)
         header.addArrangedSubview(hide); stack.addArrangedSubview(header)
         if tool != .eraser && tool != .lasso {
-            let swatches = UIStackView(); swatches.distribution = .equalSpacing
-            for hex in ["#22344B", "#3869D4", "#D44B59", "#429A80", "#D4A340", "#9670C3"] {
-                let dot = InkColorButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.layer.cornerRadius = 15
-                dot.widthAnchor.constraint(equalToConstant: 30).isActive = true; dot.heightAnchor.constraint(equalToConstant: 30).isActive = true
+            let nib = UIImageView(image: PenNibArtwork.image(tool: tool, color: settings.uiColor.withAlphaComponent(1), width: settings.width)); nib.contentMode = .scaleAspectFit; nib.heightAnchor.constraint(equalToConstant: 48).isActive = true; stack.addArrangedSubview(nib)
+            let paletteTitle = UILabel(); paletteTitle.text = "기본 색상"; paletteTitle.font = .systemFont(ofSize: 11); paletteTitle.textColor = .secondaryLabel; stack.addArrangedSubview(paletteTitle)
+            let swatches = UIStackView(); swatches.distribution = .fillEqually; swatches.spacing = 0
+            for hex in ["#E60012", "#F17B00", "#F3C800", "#63D538", "#33CBAA", "#22BDED", "#2455D6", "#6229D5", "#B308E0", "#747474", "#FFFFFF", "#111111"] {
+                let dot = InkColorButton(type: .custom); dot.backgroundColor = UIColor(hex: hex); dot.layer.cornerRadius = 0
+                dot.heightAnchor.constraint(equalToConstant: 24).isActive = true
                 dot.accessibilityLabel = "색상 " + hex
                 dot.addAction(UIAction { [weak self] _ in self?.settings.color = hex; self?.publish() }, for: .touchUpInside)
                 swatches.addArrangedSubview(dot)
@@ -49,6 +51,13 @@ import UIKit
             stack.addArrangedSubview(toggle("펜으로 복귀", settings.returnToPen) { [weak self] in self?.settings.returnToPen = $0; self?.publish() })
         }
         if tool == .marker { stack.addArrangedSubview(toggle("직선 형광펜", settings.markerStraight) { [weak self] in self?.settings.markerStraight = $0; self?.publish() }) }
+        let saved = UIButton(type: .system); saved.setTitle("+  즐겨찾기", for: .normal); saved.titleLabel?.font = .systemFont(ofSize: 12); saved.layer.borderWidth = 0.5; saved.layer.borderColor = UIColor(hex: "#E8C65A").cgColor; saved.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        saved.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            var values = UserDefaults.standard.array(forKey: "inkdrive.tool-presets.v2") as? [Data] ?? []
+            if let value = try? JSONEncoder().encode(ToolPreset(tool: self.tool, settings: self.settings)) { values.append(value); UserDefaults.standard.set(Array(values.suffix(12)), forKey: "inkdrive.tool-presets.v2") }
+            self.changed(self.settings)
+        }, for: .touchUpInside); stack.addArrangedSubview(saved)
         let more = InkIcons.button("sliders-horizontal", label: "추가 도구 설정")
         more.addAction(UIAction { [weak self] _ in guard let self else { return }; let action = self.advanced; self.dismiss(animated: true, completion: action) }, for: .touchUpInside)
         stack.addArrangedSubview(more)
@@ -56,9 +65,9 @@ import UIKit
     private func publish() { changed(settings) }
     private func slider(value: Double, min: Float, max: Float, unit: String, update: @escaping (Double) -> Void) -> UIView {
         let stack = UIStackView(); stack.spacing = 10; stack.alignment = .center
-        let slider = UISlider(); slider.minimumValue = min; slider.maximumValue = max; slider.value = Float(value); slider.tintColor = UIColor(hex: "#3869D4")
+        let slider = UISlider(); slider.minimumValue = min; slider.maximumValue = max; slider.value = Float(value); slider.tintColor = UIColor(hex: "#E8C65A")
         slider.accessibilityLabel = unit == "px" ? "굵기 px" : "불투명도 %"
-        let number = UILabel(); number.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium); number.textColor = UIColor(hex: "#485B73")
+        let number = UILabel(); number.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium); number.textColor = UIColor(white: 0.85, alpha: 1)
         number.widthAnchor.constraint(equalToConstant: 58).isActive = true
         let format: (Double) -> String = { String(format: unit == "px" ? "%.1f px" : "%.0f %%", $0) }
         number.text = format(value)
@@ -69,7 +78,7 @@ import UIKit
     private func toggle(_ title: String, _ value: Bool, update: @escaping (Bool) -> Void) -> UIView {
         let row = UIStackView(); row.alignment = .center
         let label = UILabel(); label.text = title; label.font = .systemFont(ofSize: 13); row.addArrangedSubview(label)
-        let control = UISwitch(); control.isOn = value; control.onTintColor = UIColor(hex: "#3869D4")
+        let control = UISwitch(); control.isOn = value; control.onTintColor = UIColor(hex: "#E8C65A")
         control.addAction(UIAction { [weak control] _ in update(control?.isOn ?? false) }, for: .valueChanged)
         row.addArrangedSubview(control); return row
     }

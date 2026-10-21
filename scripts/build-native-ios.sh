@@ -23,5 +23,5 @@ ditto "$APP" build/NativePackage/Payload/InkDrive.app
 shasum -a 256 artifacts/InkDrive-Swift-development.ipa > artifacts/InkDrive-Swift-development.ipa.sha256
 python3 - <<'PY'
 import json,os,pathlib
-pathlib.Path('artifacts/build-info.json').write_text(json.dumps(dict(name='InkDrive',version='0.5.0',configuration='Debug',nativeSwift=True,developmentServerRequired=False,signed=False,installation='Sign and install with Sideloadly',commit=os.environ.get('GITHUB_SHA'),run=os.environ.get('GITHUB_RUN_ID')),indent=2))
+pathlib.Path('artifacts/build-info.json').write_text(json.dumps(dict(name='InkDrive',version='0.6.0',configuration='Debug',nativeSwift=True,developmentServerRequired=False,signed=False,installation='Sign and install with Sideloadly',commit=os.environ.get('GITHUB_SHA'),run=os.environ.get('GITHUB_RUN_ID')),indent=2))
 PY
