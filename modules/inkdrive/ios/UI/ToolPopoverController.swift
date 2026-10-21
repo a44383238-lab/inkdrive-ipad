@@ -50,7 +50,7 @@ import UIKit
             well.addAction(UIAction { [weak self, weak well] _ in guard let self, let color = well?.selectedColor else { return }; self.settings.color = color.hexString; self.publish() }, for: .valueChanged)
             // A small color well sits beside the width controls, instead of a permanent toolbar row.
             let row = UIStackView(); row.alignment = .center; row.spacing = 8
-            row.addArrangedSubview(well); row.addArrangedSubview(slider(value: settings.width, min: 0.5, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
+            row.addArrangedSubview(well); row.addArrangedSubview(slider(value: settings.width, min: 0.1, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
             stack.addArrangedSubview(row)
             stack.addArrangedSubview(slider(value: settings.opacity * 100, min: 5, max: 100, unit: "%") { [weak self] in self?.settings.opacity = $0 / 100; self?.publish() })
             let recentTitle = UILabel(); recentTitle.text = "최근 색상"; recentTitle.font = .systemFont(ofSize: 11); recentTitle.textColor = .secondaryLabel; stack.addArrangedSubview(recentTitle)
@@ -84,7 +84,7 @@ import UIKit
         changed(settings)
     }
     private func slider(value: Double, min: Float, max: Float, unit: String, update: @escaping (Double) -> Void) -> UIView {
-        let stack = UIStackView(); stack.spacing = 10; stack.alignment = .center
+        let stack = UIStackView(); stack.spacing = 4; stack.alignment = .center
         let slider = UISlider(); slider.minimumValue = min; slider.maximumValue = max; slider.value = Float(value); slider.tintColor = UIColor(hex: "#E8C65A")
         slider.accessibilityLabel = unit == "px" ? "굵기 px" : "불투명도 %"
         let number = UILabel(); number.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium); number.textColor = UIColor(white: 0.85, alpha: 1)
@@ -92,7 +92,16 @@ import UIKit
         let format: (Double) -> String = { String(format: unit == "px" ? "%.1f px" : "%.0f %%", $0) }
         number.text = format(value)
         slider.addAction(UIAction { [weak slider, weak number] _ in guard let slider else { return }; let value = Double(slider.value); number?.text = format(value); update(value) }, for: .valueChanged)
-        stack.addArrangedSubview(slider); stack.addArrangedSubview(number); stack.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        stack.addArrangedSubview(slider); stack.addArrangedSubview(number)
+        for delta: Float in [-1, 1] {
+            let button = InkIcons.button(delta < 0 ? "minus" : "plus", label: (unit == "px" ? "굵기" : "불투명도") + (delta < 0 ? " 줄이기" : " 늘리기"), compact: true)
+            button.addAction(UIAction { [weak slider, weak number] _ in
+                guard let slider else { return }; let step: Float = unit == "px" ? (min >= 4 ? 1 : 0.1) : 5
+                slider.value = Swift.max(min, Swift.min(max, slider.value + delta * step))
+                let value = Double(slider.value); number?.text = format(value); update(value)
+            }, for: .touchUpInside); stack.addArrangedSubview(button)
+        }
+        stack.heightAnchor.constraint(equalToConstant: 44).isActive = true
         return stack
     }
     private func toggle(_ title: String, _ value: Bool, update: @escaping (Bool) -> Void) -> UIView {
