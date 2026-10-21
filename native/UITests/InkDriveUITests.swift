@@ -78,8 +78,11 @@ final class InkDriveUITests: XCTestCase {
         let moved = penItems.element(boundBy: penItems.count - 1)
         let movedID = moved.identifier
         moved.press(forDuration: 0.5, thenDragTo: penItems.element(boundBy: 0))
-        XCTAssertEqual(penItems.element(boundBy: 0).identifier, movedID)
         attach("Independent colored pens reordered", app)
+        let frames = XCTAttachment(string: penItems.allElementsBoundByIndex.map { "\($0.identifier): \($0.frame)" }.joined(separator: "\n"))
+        frames.name = "Tool order and frames after drag"; frames.lifetime = .keepAlways; add(frames)
+        XCTAssertEqual(penItems.element(boundBy: 0).identifier, movedID)
+        XCTAssertEqual(penItems.element(boundBy: 0).frame.minX, penItems.allElementsBoundByIndex.map { $0.frame.minX }.min() ?? -1, accuracy: 1)
         app.buttons["페이지"].tap()
         app.buttons["목차·북마크·검색"].tap()
         XCTAssertTrue(app.buttons["목차"].waitForExistence(timeout: 5))

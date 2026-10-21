@@ -50,6 +50,7 @@ import AVFoundation
     private var toolButtons: [UUID: UIButton] = [:]
     private var movingTool: UUID?
     private var movingButton: UIButton?
+    private var movingPreview: UIView?
     private var lastToolMove: CFTimeInterval = 0
     private var observerTokens: [NSObjectProtocol] = []
     private var closing = false
@@ -283,6 +284,7 @@ import AVFoundation
         browser.keepPlayingWhenHidden = true
         browser.playbackChanged = { [weak self] current, duration, playing in
             guard let self else { return }
+            self.recordingStrip.isHidden = duration <= 0
             self.dockTime.text = RecordingBrowserController.timestamp(current)
             self.dockSeek.maximumValue = Float(max(1, duration)); self.dockSeek.isEnabled = duration > 0
             if !self.dockSeek.isTracking { self.dockSeek.value = Float(current.isFinite ? current : 0) }
@@ -290,7 +292,7 @@ import AVFoundation
             self.dockPlay.setImage(InkIcons.image(playing ? "pause" : "play"), for: .normal)
             self.dockPlay.accessibilityLabel = playing ? "녹음 일시정지" : "녹음 재생"
         }
-        recordingStrip.isHidden = false
+        recordingStrip.isHidden = browser.player == nil
         let navigation = UINavigationController(rootViewController: browser)
         navigation.modalPresentationStyle = .popover; navigation.overrideUserInterfaceStyle = .dark
         navigation.preferredContentSize = CGSize(width: 370, height: 420)
@@ -414,8 +416,10 @@ import AVFoundation
             let hold = UILongPressGestureRecognizer(target: self, action: #selector(reorderTool(_:)))
             hold.minimumPressDuration = 0.35; hold.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue), NSNumber(value: UITouch.TouchType.pencil.rawValue)]
             item.addGestureRecognizer(hold)
+            toolScroll.panGestureRecognizer.require(toFail: hold)
             toolButtons[entry.id] = item; tools.addArrangedSubview(item)
         }
+        tools.accessibilityElements = toolbar.entries.compactMap { toolButtons[$0.id] }
         updateToolAppearance(); view.setNeedsLayout()
     }
     private func updateToolAppearance() {
@@ -445,10 +449,19 @@ import AVFoundation
               let id = toolButtons.first(where: { $0.value === button })?.key else { return }
         switch gesture.state {
         case .began:
-            movingTool = id; movingButton = button; toolScroll.isScrollEnabled = false
-            button.alpha = 0.6; button.transform = CGAffineTransform(scaleX: 1.13, y: 1.13)
+            movingTool = id; movingButton = button
+            // Disabling the scroll view here cancels the child's live press gesture.
+            // Gesture failure priority keeps the scroll pan from stealing the drag instead.
+            button.layer.removeAllAnimations(); button.transform = .identity
+            if let preview = button.snapshotView(afterScreenUpdates: false) {
+                preview.frame = button.convert(button.bounds, to: floating)
+                preview.transform = CGAffineTransform(scaleX: 1.13, y: 1.13)
+                floating.addSubview(preview); movingPreview = preview
+            }
+            button.alpha = 0.25
             UISelectionFeedbackGenerator().selectionChanged()
         case .changed:
+            movingPreview?.center = gesture.location(in: floating)
             let point = gesture.location(in: tools)
             // Scroll a long toolbar while holding near either viewport edge.
             let local = gesture.location(in: toolScroll)
@@ -466,13 +479,19 @@ import AVFoundation
                       return other.frame.contains(point)
                   }) else { return }
             lastToolMove = CACurrentMediaTime(); toolbar.move(id, to: target)
+            tools.accessibilityElements = toolbar.entries.compactMap { toolButtons[$0.id] }
             tools.removeArrangedSubview(button); tools.insertArrangedSubview(button, at: target)
             if UIAccessibility.isReduceMotionEnabled { tools.layoutIfNeeded() }
             else { UIView.animate(withDuration: 0.12, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) { self.tools.layoutIfNeeded() } }
             UISelectionFeedbackGenerator().selectionChanged()
         case .ended, .cancelled, .failed:
             button.alpha = 1; button.transform = .identity; movingTool = nil; movingButton = nil
-            toolScroll.isScrollEnabled = true; persistToolbar()
+            if let preview = movingPreview {
+                let target = button.convert(button.bounds, to: floating)
+                if UIAccessibility.isReduceMotionEnabled { preview.removeFromSuperview() }
+                else { UIView.animate(withDuration: 0.12, animations: { preview.transform = .identity; preview.frame = target }, completion: { _ in preview.removeFromSuperview() }) }
+            }
+            movingPreview = nil; persistToolbar()
         default: break
         }
     }
