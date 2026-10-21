@@ -133,6 +133,7 @@ public sealed class InkDriveApp : Application {
                     school.CoreWebView2.CookieManager.AddOrUpdateCookie(cookie);
                 }
                 status.Text="확인 완료 · "+DateTime.Now.ToString("HH:mm");
+                var summary=(Dictionary<string,object>)result["result"];if(summary.ContainsKey("failed")&&Convert.ToInt32(summary["failed"])>0)status.Text="일부 자료 다시 확인 · "+summary["failed"];
                 await SaveSession();
             }
         }catch{status.Text="학교 로그인·네트워크·서재 접근을 확인해 주세요.";}finally{checking=false;}

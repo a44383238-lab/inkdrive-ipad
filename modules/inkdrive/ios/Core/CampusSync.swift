@@ -30,6 +30,7 @@ struct CampusAttachment: Codable { let sha256: String; let path: String; let che
 struct CampusState: Codable {
     var courses: [CampusCourse] = []; var resources: [String: [CampusResource]] = [:]
     var attachments: [String: CampusAttachment] = [:]; var lastChecked: Date?
+    var failures: [String]?
 }
 enum CampusHTML {
     static func matches(_ pattern: String, _ value: String) -> [[String]] {
@@ -148,6 +149,7 @@ final class CampusRedirects: NSObject, URLSessionTaskDelegate {
                 struct Envelope: Decodable { let error: Bool; let data: Courses? }; struct Courses: Decodable { let courses: [CampusCourse] }
                 guard let envelope = try JSONDecoder().decode([Envelope].self, from: data).first, !envelope.error, let courses = envelope.data?.courses else { throw CampusError.login }
                 state.courses = courses
+                state.failures = []
                 let currentTerm = courses.compactMap { $0.identity?.term }.max()
                 for course in courses where course.identity?.term == currentTerm && currentTerm != nil {
                     try Task.checkCancellation()
@@ -155,6 +157,7 @@ final class CampusRedirects: NSObject, URLSessionTaskDelegate {
                     let page = try await html("https://plato.pusan.ac.kr/course/view.php?id=\(course.id)&mode=sections")
                     let resources = CampusHTML.resources(page); state.resources[String(course.id)] = resources
                     for item in resources {
+                        do {
                         var detail: String?
                         if item.kind == "url" {
                             let folder = try courseFolder(course, root: root).appendingPathComponent("일정")
@@ -193,6 +196,8 @@ final class CampusRedirects: NSObject, URLSessionTaskDelegate {
                                 try persist()
                             }
                         }
+                        } catch CampusError.login { throw CampusError.login }
+                        catch { state.failures?.append("\(course.id)/\(item.id)") }
                     }
                     try persist()
                 }
@@ -207,7 +212,9 @@ final class CampusRedirects: NSObject, URLSessionTaskDelegate {
                     try JSONEncoder().encode(rows).write(to: folder.appendingPathComponent("timetable.json"), options: .atomic)
                 }
                 for cookie in config.httpCookieStorage?.cookies ?? [] { await webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) }
-                state.lastChecked = Date(); try persist(); status = "확인 완료"
+                let failed = state.failures?.count ?? 0
+                if failed == 0 { state.lastChecked = Date() }; try persist()
+                status = failed == 0 ? "확인 완료" : "일부 자료 다시 확인 · \(failed)"
             } catch { status = error.localizedDescription }
         }
     }

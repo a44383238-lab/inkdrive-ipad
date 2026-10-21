@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { dirname, extname } from 'node:path';
 import { resolveInside } from '../scripts/daily-handoff.mjs';
 import {portalTimetable} from './portal.mjs';
+import {setTimeout as delay} from 'node:timers/promises';
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const schoolHosts = new Set(['plato.pusan.ac.kr','onestop.pusan.ac.kr','login.pusan.ac.kr']);
 export function schoolURL(value, base = 'https://plato.pusan.ac.kr/') {
@@ -45,7 +46,12 @@ export function attachmentName(disposition, fallback) {
 }
 async function atomic(root, relative, bytes) {
   const path = await resolveInside(root,relative,true); await mkdir(dirname(path),{recursive:true});
-  const temp = path+'.'+randomUUID()+'.partial'; await writeFile(temp,bytes,{flag:'wx'}); await rename(temp,path);
+  const temp = path+'.'+randomUUID()+'.partial'; await writeFile(temp,bytes,{flag:'wx'});
+  // iCloud/Defender briefly locks the destination during hydration and metadata indexing.
+  for(let attempt=0;;attempt++) {
+    try { await rename(temp,path);break; }
+    catch(error){if(attempt>=7||!['EPERM','EACCES','EBUSY'].includes(error.code))throw error;await delay(Math.min(800,100*2**attempt));}
+  }
 }
 export class SchoolHTTP {
   constructor(cookies, transport = fetch) { this.cookies = cookies; this.transport = transport; }
@@ -90,7 +96,7 @@ export async function syncCampus({root,client,deviceId,manual=false,now=Date.now
   const envelope=await response.json(); if(!Array.isArray(envelope)||envelope[0]?.error||!Array.isArray(envelope[0]?.data?.courses))throw new Error('학교 수강목록을 읽지 못했어요.');
   state.courses=envelope[0].data.courses;
   if(state.courses.some(c=>!Number.isSafeInteger(c.id)||c.id<1))throw new Error('과목 식별자를 확인해 주세요.');
-  const term=state.courses.map(courseIdentity).filter(Boolean).map(i=>i.term).sort().at(-1); let downloaded=0;
+  const term=state.courses.map(courseIdentity).filter(Boolean).map(i=>i.term).sort().at(-1); let downloaded=0;state.failures=[];
   for(const course of state.courses.filter(c=>courseIdentity(c)?.term===term && term)) {
     client.stage={course:course.id};
     const info=courseIdentity(course),folder=`${info.term}/${safeName(course.fullname)}_${info.code}`;
@@ -98,6 +104,7 @@ export async function syncCampus({root,client,deviceId,manual=false,now=Date.now
     const items=resources(await client.html(`https://plato.pusan.ac.kr/course/view.php?id=${course.id}&mode=sections`)); state.resources[course.id]=items;
     for(const item of items) {
       client.stage={course:course.id,resource:item.id,kind:item.kind};
+      try {
       let detail=null;
       if(item.kind==='url') {
         await atomic(root,`${folder}/일정/url_${item.id}.txt`,`${item.title}\n${item.url}`);continue;
@@ -128,6 +135,10 @@ export async function syncCampus({root,client,deviceId,manual=false,now=Date.now
         await atomic(root,statePath,JSON.stringify(state,null,2));
         if(onAttachment)try{await onAttachment(relative);}catch{state.previewStatus='일부 미리보기 생성 대기';}
       }
+      } catch(error) {
+        if(/로그인/.test(error.message)||['EACCES','EPERM','ENOSPC'].includes(error.code))throw error;
+        state.failures.push({course:course.id,resource:item.id,kind:item.kind});
+      }
     }
   }
   try {
@@ -138,5 +149,6 @@ export async function syncCampus({root,client,deviceId,manual=false,now=Date.now
     const rows=[...portal.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].filter(m=>m[1].includes('schedule-item')).map(m=>text(m[1]));
     if(rows.length)await atomic(root,'.inkdrive/campus/timetable.json',JSON.stringify(rows));
   }catch{state.timetableStatus='학지시 로그인 확인 필요';}
-  state.lastChecked=new Date(now).toISOString();await atomic(root,statePath,JSON.stringify(state,null,2));return {downloaded,courses:state.courses.length,lastChecked:state.lastChecked};
+  state.lastAttempt=new Date(now).toISOString();if(!state.failures.length)state.lastChecked=state.lastAttempt;
+  await atomic(root,statePath,JSON.stringify(state,null,2));return {downloaded,courses:state.courses.length,lastChecked:state.lastChecked,failed:state.failures.length};
 }

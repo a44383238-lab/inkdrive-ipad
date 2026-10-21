@@ -5,9 +5,6 @@ settings:
   base:
     SWIFT_VERSION: '5.9'
     IPHONEOS_DEPLOYMENT_TARGET: '17.0'
-    # WebKit bug 293831: iOS 18.5 simulator lacks the pre-18.4 Swift overlay path.
-    # The device IPA still supports iOS 17; this only selects the simulator overlay.
-    "IPHONEOS_DEPLOYMENT_TARGET[sdk=iphonesimulator*]": '18.4'
     TARGETED_DEVICE_FAMILY: '2'
     CODE_SIGNING_ALLOWED: NO
     CODE_SIGNING_REQUIRED: NO

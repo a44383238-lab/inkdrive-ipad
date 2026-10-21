@@ -46,14 +46,16 @@ jobs:
           xcrun simctl shutdown "$DEVICE" || true
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
-          xcodebuild build-for-testing -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-build.log
+          # WebKit bug 293831: only simulator tests use 18.4 to select its available overlay.
+          # The independently compiled arm64 device IPA retains iOS 17 support.
+          xcodebuild build-for-testing -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests IPHONEOS_DEPLOYMENT_TARGET=18.4 CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-build.log
           xcrun simctl install "$DEVICE" build/app-tests/Build/Products/Debug-iphonesimulator/InkDrive.app
           xcrun simctl launch "$DEVICE" app.inkdrive.notes --ui-smoke > build/app-launch.log 2>&1 || true
           sleep 25
           xcrun simctl io "$DEVICE" screenshot build/app-launch.png || true
           xcrun simctl spawn "$DEVICE" log show --last 3m --style compact --predicate 'process == "InkDrive"' > build/app-startup.log 2>&1 || true
           xcrun simctl terminate "$DEVICE" app.inkdrive.notes || true
-          xcodebuild test-without-building -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-tests.log
+          xcodebuild test-without-building -project native/InkDrive.xcodeproj -scheme InkDrive -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$DEVICE" -parallel-testing-enabled NO -derivedDataPath build/app-tests IPHONEOS_DEPLOYMENT_TARGET=18.4 CODE_SIGNING_ALLOWED=NO 2>&1 | tee build/app-tests.log
       - name: Export app screenshots
         if: always()
         run: |

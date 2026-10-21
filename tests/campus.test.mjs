@@ -60,10 +60,10 @@ test('assignment and notice attachments are collected while scripts and session 
   assert.match(await readFile(join(folder,'일정','url_6.txt'),'utf8'),/https:\/\/plato\.pusan\.ac\.kr\/mod\/url\/view\.php\?id=6/);
   assert.equal(text('<h1>내용</h1><style>private</style><script>private</script>'),'내용');
 });
-test('download interrupted before completion never publishes an attachment or a successful sync state',async t=>{
+test('download interrupted before completion never publishes an attachment or a successful sync timestamp',async t=>{
   const root=await mkdtemp(join(tmpdir(),'inkdrive-partial-'));t.after(()=>rm(root,{recursive:true,force:true}));
   const client={html:async url=>url.endsWith('.kr/')?`{"sesskey":"memory"}`:`<a href='/mod/ubfile/view.php?id=3'>자료</a>`,request:async url=>url.includes('/lib/ajax/')?Response.json([{error:false,data:{courses:[{id:2,fullname:'통계',shortname:'통계 (2026-0020, IE1_066)'}]}}]):new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array([1,2]));controller.error(new Error('network interrupted'));}}),{headers:{'Content-Type':'application/pdf'}})};
-  await assert.rejects(syncCampus({root,client,deviceId:'test'}),/interrupted/);
-  await assert.rejects(readFile(join(root,'.inkdrive','campus','devices','test.json')),e=>e.code==='ENOENT');
+  assert.equal((await syncCampus({root,client,deviceId:'test'})).failed,1);
+  const state=JSON.parse(await readFile(join(root,'.inkdrive','campus','devices','test.json'),'utf8'));assert.equal(state.lastChecked,undefined);assert.deepEqual(state.attachments,{});
   assert.deepEqual(await readdir(join(root,'2026-0020','통계_IE1_066')),['.campus-course.json']);
 });
