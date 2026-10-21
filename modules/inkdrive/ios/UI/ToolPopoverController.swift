@@ -55,8 +55,13 @@ import UIKit
                       code.range(of: "^#[0-9A-F]{6}$", options: .regularExpression) != nil else { return }
                 self?.settings.color = code; self?.publish()
             }, for: .editingChanged)
+            colorCode.heightAnchor.constraint(equalToConstant: 32).isActive = true
+            let colorHeader = UIStackView(); colorHeader.alignment = .center; colorHeader.spacing = 8
+            stack.removeArrangedSubview(paletteTitle); paletteTitle.removeFromSuperview()
+            colorHeader.addArrangedSubview(paletteTitle); colorHeader.addArrangedSubview(UIView()); colorHeader.addArrangedSubview(colorCode)
+            stack.insertArrangedSubview(colorHeader, at: stack.arrangedSubviews.firstIndex(of: swatches) ?? 2)
             let row = UIStackView(); row.alignment = .center; row.spacing = 8
-            row.addArrangedSubview(colorCode); row.addArrangedSubview(slider(value: settings.width, min: 0.1, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
+            row.addArrangedSubview(slider(value: settings.width, min: 0.1, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
             stack.addArrangedSubview(row)
             stack.addArrangedSubview(slider(value: settings.opacity * 100, min: 5, max: 100, unit: "%") { [weak self] in self?.settings.opacity = $0 / 100; self?.publish() })
             let recentTitle = UILabel(); recentTitle.text = "최근 색상"; recentTitle.font = .systemFont(ofSize: 11); recentTitle.textColor = .secondaryLabel; stack.addArrangedSubview(recentTitle)
