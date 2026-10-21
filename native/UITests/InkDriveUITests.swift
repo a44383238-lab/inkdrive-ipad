@@ -1,10 +1,13 @@
 import XCTest
+import UIKit
 
 final class InkDriveUITests: XCTestCase {
     override func setUp() { super.setUp(); continueAfterFailure = false }
     func testLibraryAndEditorWorkWithoutDevelopmentServer() throws {
-        XCUIDevice.shared.orientation = .landscapeLeft
         let app = XCUIApplication(); app.launchArguments = ["--ui-smoke"]; app.launch()
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in app.frame.width > app.frame.height }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [landscape], timeout: 10), .completed)
         XCTAssertTrue(app.buttons["통계학"].waitForExistence(timeout: 12))
         XCTAssertFalse(app.buttons["새 수업 녹음"].exists)
         XCTAssertFalse(app.buttons["수업 연결"].exists)
@@ -78,6 +81,6 @@ final class InkDriveUITests: XCTestCase {
         XCTAssertTrue(app.buttons["펜"].waitForExistence(timeout: 10)); attach("HTML snapshot editor", app)
     }
     private func attach(_ name: String, _ app: XCUIApplication) {
-        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
 }
