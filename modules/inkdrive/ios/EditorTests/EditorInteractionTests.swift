@@ -38,6 +38,13 @@ import PencilKit
         XCTAssertEqual(overlay.canvas.drawingPolicy, .pencilOnly)
         XCTAssertNotNil(overlay.canvas.hitTest(CGPoint(x: 30, y: 30), with: nil))
     }
+    func testOrdinaryPenUsesOwnedPressureInputInsteadOfPencilKitBrush() throws {
+        let editor = try editor()
+        editor.setTool(.pen)
+        let overlay = PageOverlay(record: editor.session.model.pages[0], editor: editor)
+        XCTAssertFalse(overlay.canvas.isUserInteractionEnabled, "The ordinary pen must use Perfect Freehand input")
+        XCTAssertTrue(overlay.interaction.isUserInteractionEnabled)
+    }
     func testSinglePageTurnsLeftAndRightWithoutLeavingPageBounds() throws {
         let editor = try editor()
         try editor.session.insertPage(at: 1, template: .ruled)
