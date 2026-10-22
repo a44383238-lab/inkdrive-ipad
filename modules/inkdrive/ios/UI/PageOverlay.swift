@@ -21,7 +21,14 @@ final class PencilCanvas: PKCanvasView {
     private var perfectLayers: [CAShapeLayer] = []
     var drawing: PKDrawing {
         // Native tools only see legacy strokes; app-owned outline carriers are never rasterized by PencilKit.
-        PKDrawing(strokes: (canvas.drawing.strokes + workingDrawing.strokes.filter(PerfectInk.owns)).sorted { $0.path.creationDate < $1.path.creationDate })
+        let native = canvas.drawing.strokes
+        var index = 0, merged: [PKStroke] = []
+        for stroke in workingDrawing.strokes {
+            if PerfectInk.owns(stroke) { merged.append(stroke) }
+            else if index < native.count { merged.append(native[index]); index += 1 }
+        }
+        merged.append(contentsOf: native.dropFirst(index))
+        return PKDrawing(strokes: merged)
     }
     init(record: NotebookPage, editor: EditorViewController) {
         self.record = record; self.editor = editor; lastCommit = record.drawing.dataRepresentation(); workingDrawing = record.drawing

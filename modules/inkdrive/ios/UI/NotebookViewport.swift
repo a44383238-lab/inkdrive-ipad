@@ -29,6 +29,7 @@ final class StationaryScrollDelegate: NSObject, UIScrollViewDelegate {
     func configure(_ view: UIView) {
         guard !(view is PKCanvasView) else { return }
         if let scroll = view as? UIScrollView {
+            scroll.isDirectionalLockEnabled = false
             scroll.panGestureRecognizer.isEnabled = !inkActive
             scroll.pinchGestureRecognizer?.isEnabled = !inkActive
             scroll.bounces = false; scroll.alwaysBounceVertical = false; scroll.alwaysBounceHorizontal = false

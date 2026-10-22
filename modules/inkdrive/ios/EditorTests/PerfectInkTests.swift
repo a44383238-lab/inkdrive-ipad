@@ -140,4 +140,21 @@ import PDFKit
         XCTAssertFalse(view.panGestureRecognizer.isEnabled)
         viewport.setInkActive(false,in: view); XCTAssertTrue(view.panGestureRecognizer.isEnabled)
     }
+    func testPaperPanningNeverLocksToTheInitialAxis() {
+        let view = UIScrollView(); view.isDirectionalLockEnabled = true
+        let viewport = NotebookViewport(); viewport.configure(view)
+        XCTAssertFalse(view.isDirectionalLockEnabled)
+        view.contentOffset = CGPoint(x: 83,y: 126)
+        var target = CGPoint(x: 900,y: 900)
+        StationaryScrollDelegate(original: nil).scrollViewWillEndDragging(view, withVelocity: CGPoint(x: 5,y: 8), targetContentOffset: &target)
+        XCTAssertEqual(target, CGPoint(x: 83,y: 126))
+    }
+    func testActualHoldTimerSnapsAfterOneAndAHalfSeconds() async throws {
+        let editor = try editor(), overlay = PageOverlay(record: editor.session.model.pages[0], editor: editor)
+        overlay.interaction.beginPen(line()[0]); line().dropFirst().forEach(overlay.interaction.appendPen)
+        try await Task.sleep(nanoseconds: 1_650_000_000)
+        overlay.interaction.finishPen(); overlay.commit()
+        XCTAssertEqual(editor.tool, .lasso)
+        XCTAssertEqual(overlay.interaction.selected.count, 1)
+    }
 }

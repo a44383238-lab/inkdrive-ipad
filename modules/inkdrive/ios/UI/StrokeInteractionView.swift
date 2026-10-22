@@ -32,7 +32,7 @@ import PDFKit
     private var displayLink: CADisplayLink?
     private var needsInkFrame = false
     private var pageScale: CGFloat { max(0.1, overlay?.editor?.pdfView.scaleFactor ?? 1) }
-    private final class FrameTarget: NSObject {
+    @MainActor private final class FrameTarget: NSObject {
         weak var owner: StrokeInteractionView?
         init(_ owner: StrokeInteractionView) { self.owner = owner }
         @objc func tick() { owner?.renderInkIfNeeded() }

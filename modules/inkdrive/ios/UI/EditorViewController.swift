@@ -102,6 +102,11 @@ import AVFoundation
             persistToolbar()
         }
         tool = toolbar.active.tool
+        var normalized = false
+        for i in toolbar.entries.indices where toolbar.entries[i].tool == .pen && toolbar.entries[i].settings.opacity != 1 {
+            toolbar.entries[i].settings.opacity = 1; normalized = true
+        }
+        if normalized { persistToolbar() }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
@@ -571,12 +576,14 @@ import AVFoundation
         else { addToolbarEntry(new, settings: configurations[new.rawValue] ?? ToolSettings()) }
     }
     private func addToolbarEntry(_ tool: EditorTool, settings: ToolSettings) {
+        var settings = settings; if tool == .pen { settings.opacity = 1 }
         provider.commitAll(); toolbar.add(tool, settings: settings); self.tool = tool
         persistToolbar(); rebuildTools(); provider.applyTool()
     }
     private func updateSettings(_ change: (inout ToolSettings) -> Void) {
         guard let index = toolbar.entries.firstIndex(where: { $0.id == toolbar.selected }) else { return }
         change(&toolbar.entries[index].settings)
+        if tool == .pen { toolbar.entries[index].settings.opacity = 1 }
         configurations[tool.rawValue] = toolbar.entries[index].settings
         persistToolbar(); updateToolAppearance(); provider.applyTool()
     }
