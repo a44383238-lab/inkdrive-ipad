@@ -9,15 +9,38 @@ import PDFKit
     private var moving = false
     private var selectionBounds: CGRect = .null
     var selectedBounds: CGRect { selectionBounds }
+    var selectedWidth: Double? {
+        guard let drawing = overlay?.record.drawing, let index = selected.first, drawing.strokes.indices.contains(index) else { return nil }
+        return drawing.strokes[index].path.first.map { Double($0.size.width) }
+    }
     private var resizeCorner: CGPoint?
     private var resizeAnchor: CGPoint?
     private let outline = CAShapeLayer()
     private let eraserCircle = CAShapeLayer()
     private var erasing = false
     private var endPoint: CGPoint = .zero
+    private let liveInk = CAShapeLayer()
+    private var inkBuffer = InkInputBuffer()
+    private var inkBase = PKDrawing()
+    private var inkSettings = ToolSettings()
+    private var inkDate = Date()
+    private var holdGate = InkHoldGate()
+    private var holdWork: DispatchWorkItem?
+    private var snappedShape: InkShape?
+    private(set) var isInking = false
+    private weak var activePencil: UITouch?
+    private var displayLink: CADisplayLink?
+    private var needsInkFrame = false
+    private var pageScale: CGFloat { max(0.1, overlay?.editor?.pdfView.scaleFactor ?? 1) }
+    private final class FrameTarget: NSObject {
+        weak var owner: StrokeInteractionView?
+        init(_ owner: StrokeInteractionView) { self.owner = owner }
+        @objc func tick() { owner?.renderInkIfNeeded() }
+    }
     override init(frame: CGRect) {
         super.init(frame: frame)
         isOpaque = false; backgroundColor = .clear
+        liveInk.fillRule = .nonZero; liveInk.contentsScale = UIScreen.main.scale; layer.addSublayer(liveInk)
         outline.strokeColor = InkTheme.accent.cgColor; outline.fillColor = UIColor.clear.cgColor
         outline.lineDashPattern = [5, 4]; outline.lineWidth = 1.5; layer.addSublayer(outline)
         eraserCircle.fillColor = UIColor(white: 0.15, alpha: 0.14).cgColor
@@ -28,6 +51,9 @@ import PDFKit
     func clearSelection() { selected.removeAll(); selectionBounds = .null; outline.path = nil }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }) else { return }
+        if overlay?.editor?.tool == .pen {
+            activePencil = touch; beginPen(sample(touch)); return
+        }
         let point = touch.location(in: self); points = [point]; endPoint = point
         resizeCorner = nil; resizeAnchor = nil
         if let overlay, overlay.editor?.tool == .eraser {
@@ -36,7 +62,7 @@ import PDFKit
         }
         if !selected.isEmpty, !selectionBounds.isNull, overlay?.editor?.tool == .lasso {
             let corners = [CGPoint(x: selectionBounds.minX, y: selectionBounds.minY), CGPoint(x: selectionBounds.maxX, y: selectionBounds.minY), CGPoint(x: selectionBounds.maxX, y: selectionBounds.maxY), CGPoint(x: selectionBounds.minX, y: selectionBounds.maxY)]
-            if let corner = corners.first(where: { hypot(point.x - $0.x, point.y - $0.y) < 18 }) {
+            if let corner = corners.first(where: { hypot(point.x - $0.x, point.y - $0.y) < 18 / pageScale }) {
                 resizeCorner = corner; resizeAnchor = CGPoint(x: corner.x == selectionBounds.minX ? selectionBounds.maxX : selectionBounds.minX, y: corner.y == selectionBounds.minY ? selectionBounds.maxY : selectionBounds.minY)
                 moving = false; return
             }
@@ -45,6 +71,11 @@ import PDFKit
         if !moving { clearSelection() }
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isInking {
+            guard let touch = touches.first(where: { $0 === activePencil }) else { return }
+            for confirmed in event?.coalescedTouches(for: touch) ?? [touch] { appendPen(sample(confirmed)) }
+            return
+        }
         guard let touch = touches.first(where: { $0.type == .pencil }), let first = points.first else { return }
         if erasing { let next = touch.location(in: self); updateEraser(from: endPoint, to: next); endPoint = next; return }
         endPoint = touch.location(in: self); points.append(endPoint)
@@ -57,9 +88,15 @@ import PDFKit
     }
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard touches.contains(where: { $0.type == .pencil }) else { return }
+        if isInking { finishPen(presentSelection: false); return }
         finishErasing(); points = []; resizeCorner = nil; resizeAnchor = nil; updateSelectionBounds()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if isInking {
+            guard let touch = touches.first(where: { $0 === activePencil }) else { return }
+            for confirmed in event?.coalescedTouches(for: touch) ?? [touch] { appendPen(sample(confirmed)) }
+            finishPen(); return
+        }
         guard let touch = touches.first(where: { $0.type == .pencil }), let overlay, let editor = overlay.editor, let first = points.first else { return }
         if erasing { updateEraser(from: endPoint, to: touch.location(in: self)); finishErasing(); return }
         endPoint = touch.location(in: self)
@@ -104,7 +141,8 @@ import PDFKit
         CATransaction.begin(); CATransaction.setDisableActions(true)
         eraserCircle.path = CGPath(ellipseIn: CGRect(x: to.x - width / 2, y: to.y - width / 2, width: width, height: width), transform: nil)
         CATransaction.commit()
-        overlay.canvas.drawing = InkEraser.erase(overlay.canvas.drawing, from: from, to: to, width: width, partial: editor.settings.partialEraser, target: editor.settings.eraserTarget)
+        eraserCircle.lineWidth = 1 / pageScale
+        overlay.setDrawing(InkEraser.erase(overlay.drawing, from: from, to: to, width: width, partial: editor.settings.partialEraser, target: editor.settings.eraserTarget))
     }
     private func finishErasing() {
         guard erasing, let overlay else { return }; erasing = false
@@ -113,15 +151,17 @@ import PDFKit
     }
     private func updateSelectionBounds() {
         guard let drawing = overlay?.record.drawing else { return }
-        selectionBounds = selected.filter { drawing.strokes.indices.contains($0) }.reduce(CGRect.null) { $0.union(drawing.strokes[$1].renderBounds) }
+        selectionBounds = selected.filter { drawing.strokes.indices.contains($0) }.reduce(CGRect.null) { $0.union(PerfectInk.bounds(drawing.strokes[$1])) }
         drawBounds(selectionBounds)
     }
     private func drawBounds(_ rect: CGRect) {
         guard !rect.isNull else { outline.path = nil; return }
         let path = UIBezierPath(rect: rect)
+        let radius = 4 / pageScale
         for corner in [CGPoint(x: rect.minX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.minY), CGPoint(x: rect.maxX, y: rect.maxY), CGPoint(x: rect.minX, y: rect.maxY)] {
-            path.append(UIBezierPath(ovalIn: CGRect(x: corner.x - 4, y: corner.y - 4, width: 8, height: 8)))
+            path.append(UIBezierPath(ovalIn: CGRect(x: corner.x - radius, y: corner.y - radius, width: radius * 2, height: radius * 2)))
         }; outline.path = path.cgPath
+        outline.lineWidth = 1.5 / pageScale; outline.lineDashPattern = [NSNumber(value: 5 / Double(pageScale)), NSNumber(value: 4 / Double(pageScale))]
     }
     func transformSelected(_ transform: CGAffineTransform) {
         mutate { stroke in PKStroke(ink: stroke.ink, path: stroke.path, transform: stroke.transform.concatenating(transform), mask: stroke.mask) }
@@ -142,6 +182,7 @@ import PDFKit
     }
     func rewidth(_ width: CGFloat) {
         mutate { stroke in
+            if PerfectInk.owns(stroke) { return PerfectInk.rewidth(stroke, width: width) }
             let controls = stroke.path.map { point in
                 PKStrokePoint(location: point.location, timeOffset: point.timeOffset, size: CGSize(width: width, height: width), opacity: point.opacity, force: point.force, azimuth: point.azimuth, altitude: point.altitude)
             }
@@ -171,5 +212,73 @@ import PDFKit
               let drawing = try? PKDrawing(data: bytes) else { return }
         let offset = drawing.transformed(using: CGAffineTransform(translationX: 20, y: 20))
         editor.session.changeDrawing(pageID: overlay.record.id, to: PKDrawing(strokes: overlay.record.drawing.strokes + offset.strokes))
+    }
+    private func sample(_ touch: UITouch) -> InkSample {
+        InkSample(point: touch.preciseLocation(in: self), pressure: touch.maximumPossibleForce > 0 ? touch.force / touch.maximumPossibleForce : 0.5, time: touch.timestamp)
+    }
+    func beginPen(_ sample: InkSample) {
+        guard !isInking, let overlay, let editor = overlay.editor else { return }
+        clearSelection(); isInking = true; inkBuffer = InkInputBuffer(); snappedShape = nil; holdGate = InkHoldGate()
+        inkBase = overlay.drawing; inkSettings = editor.settings; inkDate = Date()
+        overlay.canvasViewDidBeginUsingTool(overlay.canvas)
+        let target = FrameTarget(self), link = CADisplayLink(target: target, selector: #selector(FrameTarget.tick))
+        let rate = Float(min(120, UIScreen.main.maximumFramesPerSecond))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, rate), maximum: rate, preferred: rate)
+        link.add(to: .main, forMode: .common); displayLink = link
+        appendPen(sample); renderInkIfNeeded()
+    }
+    func appendPen(_ sample: InkSample) {
+        guard isInking else { return }
+        if let last = inkBuffer.samples.last {
+            let elapsed = sample.time - last.time
+            // Ignore a stale callback or an isolated impossible teleport. Never connect it into saved ink.
+            guard elapsed > 0, PerfectFreehand.distance(last.point, sample.point) * pageScale <= max(36, CGFloat(elapsed) * 18_000) else { return }
+        }
+        guard inkBuffer.append(sample) else { return }
+        guard snappedShape == nil else { return }
+        needsInkFrame = true
+        if holdGate.update(sample.point, at: ProcessInfo.processInfo.systemUptime, scale: pageScale), holdWork == nil { armShapeHold() }
+    }
+    private func armShapeHold() {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }; self.holdWork = nil
+            guard self.isInking else { return }
+            if self.holdGate.ready(at: ProcessInfo.processInfo.systemUptime) { self.recognizeHeldShape() }
+            else { self.armShapeHold() }
+        }
+        let remaining = max(0.01, InkHoldGate.delay - (ProcessInfo.processInfo.systemUptime - holdGate.lastMovement))
+        holdWork = work; DispatchQueue.main.asyncAfter(deadline: .now() + remaining, execute: work)
+    }
+    @discardableResult func recognizeHeldShape() -> Bool {
+        guard isInking, snappedShape == nil,
+              let shape = InkShapeRecognizer.recognize(inkBuffer.samples, scale: pageScale) else { return false }
+        snappedShape = shape; needsInkFrame = true; renderInkIfNeeded(); return true
+    }
+    private func renderInkIfNeeded() {
+        guard isInking, needsInkFrame else { return }; needsInkFrame = false
+        let samples = snappedShape?.samples ?? inkBuffer.samples
+        let path = PerfectFreehand.path(samples, size: inkSettings.width, complete: snappedShape != nil)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        liveInk.contentsScale = UIScreen.main.scale * max(1, pageScale)
+        liveInk.path = path; liveInk.fillColor = inkSettings.uiColor.withAlphaComponent(1).cgColor
+        CATransaction.commit()
+    }
+    func finishPen(presentSelection: Bool = true) {
+        guard isInking, let overlay else { return }
+        let shape = snappedShape, samples = shape?.samples ?? inkBuffer.samples
+        isInking = false; activePencil = nil; holdWork?.cancel(); holdWork = nil
+        displayLink?.invalidate(); displayLink = nil
+        if let stroke = PerfectInk.make(samples, width: inkSettings.width, color: inkSettings.uiColor, date: inkDate) {
+            overlay.setDrawing(PKDrawing(strokes: inkBase.strokes + [stroke]))
+        }
+        overlay.canvasViewDidEndUsingTool(overlay.canvas)
+        CATransaction.begin(); CATransaction.setDisableActions(true); liveInk.path = nil; CATransaction.commit()
+        snappedShape = nil; inkBuffer = InkInputBuffer()
+        if shape != nil, presentSelection, let editor = overlay.editor {
+            editor.setTool(.lasso)
+            if let index = overlay.record.drawing.strokes.firstIndex(where: { $0.path.creationDate == inkDate }) {
+                selected = [index]; updateSelectionBounds(); editor.selectionMenu(self)
+            }
+        }
     }
 }

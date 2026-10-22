@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import PencilKit
 
 struct LibraryEntry: Identifiable {
     let name: String
@@ -55,7 +56,20 @@ enum LibraryScreen { case library, today, campus, settings }
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                 try repository.choose(folder)
                 for subject in ["통계학", "산업데이터과학", "작업설계", "강의자료"] { try repository.createFolder(parent: "", name: subject) }
-                _ = try repository.createNote(parent: "통계학", name: "강의 1", template: "ruled")
+                let note = try repository.createNote(parent: "통계학", name: "강의 1", template: "ruled")
+                let noteURL = folder.appendingPathComponent(note)
+                let model = try PDFModel(data: Data(contentsOf: noteURL))
+                var strokes: [PKStroke] = []
+                for (row, color) in [UIColor.black, UIColor(hex: "#2455D6"), UIColor(hex: "#DB3249")].enumerated() {
+                    let samples = (0...120).map { i in
+                        InkSample(point: CGPoint(x: 70 + Double(i) * 3, y: 100 + Double(row) * 55 + sin(Double(i) / 5) * 12), pressure: 0.08 + CGFloat(i) / 140, time: Double(i) / 240)
+                    }
+                    if let stroke = PerfectInk.make(samples, width: 3, color: color) { strokes.append(stroke) }
+                }
+                let circle = (0...96).map { i in InkSample(point: CGPoint(x: 145 + 40 * cos(Double(i) / 96 * .pi * 2), y: 330 + 40 * sin(Double(i) / 96 * .pi * 2)), pressure: 0.5, time: Double(i) / 240) }
+                if let stroke = PerfectInk.make(circle, width: 2, color: .black) { strokes.append(stroke) }
+                model.pages[0].drawing = PKDrawing(strokes: strokes)
+                try model.snapshot().write(to: noteURL, options: .atomic)
                 _ = try repository.createNote(parent: "통계학", name: "강의 2", template: "grid")
                 try Data("<html><meta charset='utf-8'><body style='padding:40px;font-family:sans-serif'><h1>InkDrive HTML</h1><p>Fixed snapshot keeps the original document.</p></body></html>".utf8).write(to: folder.appendingPathComponent("강의자료/스냅샷.html"))
             } catch { message = error.localizedDescription }

@@ -5,5 +5,5 @@ let package = Package(name: "InkDriveCore", platforms: [.iOS(.v17)], products: [
 ], targets: [
     .target(name: "InkDriveCore", path: ".", sources: ["Core", "UI"], resources: [.process("Resources/Icons")]),
     .testTarget(name: "InkDriveCoreTests", dependencies: ["InkDriveCore"], path: "Tests"),
-    .testTarget(name: "InkDriveEditorTests", dependencies: ["InkDriveCore"], path: "EditorTests")
+    .testTarget(name: "InkDriveEditorTests", dependencies: ["InkDriveCore"], path: "EditorTests", resources: [.copy("Fixtures")])
 ])

@@ -22,9 +22,15 @@ final class StationaryScrollDelegate: NSObject, UIScrollViewDelegate {
 
 @MainActor final class NotebookViewport {
     private var delegates: [ObjectIdentifier: StationaryScrollDelegate] = [:]
+    private var inkActive = false
+    func setInkActive(_ active: Bool, in view: UIView) {
+        inkActive = active; configure(view)
+    }
     func configure(_ view: UIView) {
         guard !(view is PKCanvasView) else { return }
         if let scroll = view as? UIScrollView {
+            scroll.panGestureRecognizer.isEnabled = !inkActive
+            scroll.pinchGestureRecognizer?.isEnabled = !inkActive
             scroll.bounces = false; scroll.alwaysBounceVertical = false; scroll.alwaysBounceHorizontal = false
             scroll.panGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]
             scroll.pinchGestureRecognizer?.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.direct.rawValue)]

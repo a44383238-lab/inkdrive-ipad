@@ -27,6 +27,7 @@ struct PortableInkStroke: Codable {
     let createdAt: String; let updatedAt: String; let transform: [Double]; let samples: [PortableInkSample]
     var mask: [[Double]]? = nil
     var maskEvenOdd: Bool? = nil
+    var outline: [[Double]]? = nil
 }
 struct PortableInkSample: Codable {
     let x: Double; let y: Double; let width: Double; let height: Double
@@ -49,7 +50,7 @@ enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupport
             // Preserve the pretransform eraser clipping path as document-coordinate commands.
             let tool: String
             switch stroke.ink.inkType {
-            case .pen, .monoline: tool = "pen"
+            case .pen, .monoline, .fountainPen: tool = "pen"
             case .pencil: tool = "pencil"
             case .marker: tool = "marker"
             default: throw PortableInkError.unsupportedTool
@@ -70,14 +71,21 @@ enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupport
                 guard values.allSatisfy({ $0.isFinite }), point.size.width > 0, point.size.height > 0,
                       point.force >= 0, point.force <= 10, point.opacity >= 0, point.opacity <= 1, point.timeOffset.isFinite, point.timeOffset >= 0
                 else { throw PortableInkError.sample }
+                let width = PerfectInk.owns(stroke) ? PerfectFreehand.radius(size: point.size.width, pressure: point.force) * 2 : point.size.width
+                let height = PerfectInk.owns(stroke) ? width : point.size.height
                 return PortableInkSample(x: Double(crop.minX + point.location.x), y: Double(crop.maxY - point.location.y),
-                    width: Double(point.size.width), height: Double(point.size.height), pressure: Double(point.force),
+                    width: Double(width), height: Double(height), pressure: Double(point.force),
                     opacity: Double(point.opacity), timeMs: point.timeOffset * 1000)
             }
             guard !samples.isEmpty, samples.count <= 100_000, now >= stroke.path.creationDate else { throw PortableInkError.sample }
             var output = PortableInkStroke(id: strokeIDs[index].uuidString.lowercased(), layerId: "main", tool: tool, color: color,
                 opacity: Double(alpha), createdAt: formatter.string(from: stroke.path.creationDate), updatedAt: formatter.string(from: now),
                 transform: transform, samples: samples)
+            if PerfectInk.owns(stroke) {
+                output.outline = PerfectInk.commands(PerfectInk.outline(stroke)) { CGPoint(x: crop.minX + $0.x, y: crop.maxY - $0.y) }
+                // The outline is already the visible result, including any partial erasing.
+                strokes.append(output); continue
+            }
             if let mask = stroke.mask {
                 var commands: [[Double]] = []
                 mask.cgPath.applyWithBlock { element in

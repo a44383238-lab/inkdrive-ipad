@@ -16,22 +16,31 @@ final class PencilCanvas: PKCanvasView {
     private var toolActive = false
     private var openedGroup = false
     private var closeGroupWork: DispatchWorkItem?
+    private var workingDrawing: PKDrawing
+    private let perfectSurface = UIView()
+    private var perfectLayers: [CAShapeLayer] = []
+    var drawing: PKDrawing {
+        // Native tools only see legacy strokes; app-owned outline carriers are never rasterized by PencilKit.
+        PKDrawing(strokes: (canvas.drawing.strokes + workingDrawing.strokes.filter(PerfectInk.owns)).sorted { $0.path.creationDate < $1.path.creationDate })
+    }
     init(record: NotebookPage, editor: EditorViewController) {
-        self.record = record; self.editor = editor; lastCommit = record.drawing.dataRepresentation()
+        self.record = record; self.editor = editor; lastCommit = record.drawing.dataRepresentation(); workingDrawing = record.drawing
         super.init(frame: .zero)
         isOpaque = false; backgroundColor = .clear
-        canvas.drawing = record.drawing; canvas.delegate = self; canvas.backgroundColor = .clear; canvas.isOpaque = false
+        canvas.drawing = PKDrawing(strokes: record.drawing.strokes.filter { !PerfectInk.owns($0) }); canvas.delegate = self; canvas.backgroundColor = .clear; canvas.isOpaque = false
         canvas.overrideUserInterfaceStyle = .light
         canvas.drawingPolicy = .pencilOnly; canvas.isScrollEnabled = false
         canvas.drawingGestureRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         canvas.drawingGestureRecognizer.isEnabled = true
-        addSubview(canvas); addSubview(interaction)
+        perfectSurface.isUserInteractionEnabled = false; perfectSurface.backgroundColor = .clear; perfectSurface.isOpaque = false
+        addSubview(canvas); addSubview(perfectSurface); addSubview(interaction)
         interaction.overlay = self
+        renderPerfectInk()
         applyTool()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func layoutSubviews() {
-        super.layoutSubviews(); canvas.frame = bounds; interaction.frame = bounds
+        super.layoutSubviews(); canvas.frame = bounds; perfectSurface.frame = bounds; interaction.frame = bounds
     }
     func applyTool() {
         guard let editor else { return }
@@ -39,7 +48,7 @@ final class PencilCanvas: PKCanvasView {
         canvas.tool = editor.settings.nativeTool(tool)
         let customMarker = tool == .marker && editor.settings.markerStraight
         let customEraser = tool == .eraser
-        let native = [.pen, .pencil, .marker, .eraser].contains(tool) && !customMarker && !customEraser
+        let native = [.pencil, .marker].contains(tool) && !customMarker && !customEraser
         canvas.isUserInteractionEnabled = native
         interaction.isUserInteractionEnabled = !native
         if tool != .lasso { interaction.clearSelection() }
@@ -48,8 +57,35 @@ final class PencilCanvas: PKCanvasView {
         guard !toolActive else { return }
         let data = record.drawing.dataRepresentation()
         guard data != lastCommit else { return }
-        synchronizing = true; canvas.drawing = record.drawing; lastCommit = data; synchronizing = false
+        setDrawing(record.drawing); lastCommit = data
         interaction.clearSelection()
+    }
+    func setDrawing(_ drawing: PKDrawing) {
+        synchronizing = true; workingDrawing = drawing
+        canvas.drawing = PKDrawing(strokes: drawing.strokes.filter { !PerfectInk.owns($0) })
+        renderPerfectInk(); synchronizing = false
+    }
+    private func renderPerfectInk() {
+        let strokes = workingDrawing.strokes.filter(PerfectInk.owns)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        while perfectLayers.count > strokes.count { perfectLayers.removeLast().removeFromSuperlayer() }
+        while perfectLayers.count < strokes.count {
+            let layer = CAShapeLayer(); layer.fillRule = .nonZero; layer.contentsScale = UIScreen.main.scale
+            perfectSurface.layer.addSublayer(layer); perfectLayers.append(layer)
+        }
+        for (layer, stroke) in zip(perfectLayers, strokes) {
+            layer.path = PerfectInk.outline(stroke); layer.fillColor = stroke.ink.color.withAlphaComponent(1).cgColor
+            layer.setAffineTransform(stroke.transform)
+        }
+        CATransaction.commit()
+        updateInkScale()
+    }
+    func updateInkScale() {
+        let scale = UIScreen.main.scale * max(1, editor?.pdfView.scaleFactor ?? 1)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        perfectSurface.contentScaleFactor = scale
+        for layer in perfectLayers { layer.contentsScale = scale; layer.shouldRasterize = false }
+        CATransaction.commit()
     }
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         guard !synchronizing else { return }
@@ -59,19 +95,25 @@ final class PencilCanvas: PKCanvasView {
     }
     func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
         endGroup(); toolActive = true; editor?.session.beginInkInput(record.id); beginGroup()
+        editor?.setInkInputActive(true)
     }
     func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
         toolActive = false; editor?.session.endInkInput(record.id); commitDrawing(); scheduleGroupEnd()
+        editor?.setInkInputActive(false)
         if editor?.tool == .eraser, editor?.settings.returnToPen == true { editor?.setTool(.pen) }
     }
     func commit() {
+        interaction.finishPen(presentSelection: false)
         toolActive = false; editor?.session.endInkInput(record.id); commitDrawing(); endGroup()
+        editor?.setInkInputActive(false)
     }
     private func commitDrawing() {
-        let data = canvas.drawing.dataRepresentation()
+        let current = drawing
+        let data = current.dataRepresentation()
         guard data != lastCommit else { return }
         lastCommit = data
-        editor?.session.changeDrawing(pageID: record.id, to: canvas.drawing, alreadyCompared: true)
+        workingDrawing = current
+        editor?.session.changeDrawing(pageID: record.id, to: current, alreadyCompared: true)
     }
     private func beginGroup() {
         guard !openedGroup, let history = editor?.session.history else { return }

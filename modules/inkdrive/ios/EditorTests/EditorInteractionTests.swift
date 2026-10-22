@@ -36,7 +36,7 @@ import PencilKit
         overlay.layoutIfNeeded()
         XCTAssertTrue(overlay.canvas.drawingGestureRecognizer.isEnabled)
         XCTAssertEqual(overlay.canvas.drawingPolicy, .pencilOnly)
-        XCTAssertNotNil(overlay.canvas.hitTest(CGPoint(x: 30, y: 30), with: nil))
+        XCTAssertNotNil(overlay.interaction.hitTest(CGPoint(x: 30, y: 30), with: nil))
     }
     func testOrdinaryPenUsesOwnedPressureInputInsteadOfPencilKitBrush() throws {
         let editor = try editor()

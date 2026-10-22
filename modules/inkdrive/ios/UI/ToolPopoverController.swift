@@ -64,7 +64,9 @@ import UIKit
             let row = UIStackView(); row.alignment = .center; row.spacing = 8
             row.addArrangedSubview(slider(value: settings.width, min: 0.1, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
             stack.addArrangedSubview(row)
-            stack.addArrangedSubview(slider(value: settings.opacity * 100, min: 5, max: 100, unit: "%") { [weak self] in self?.settings.opacity = $0 / 100; self?.publish() })
+            if tool != .pen {
+                stack.addArrangedSubview(slider(value: settings.opacity * 100, min: 5, max: 100, unit: "%") { [weak self] in self?.settings.opacity = $0 / 100; self?.publish() })
+            }
             let recentTitle = UILabel(); recentTitle.text = "최근 색상"; recentTitle.font = .systemFont(ofSize: 11); recentTitle.textColor = .secondaryLabel; stack.addArrangedSubview(recentTitle)
             let recent = UIStackView(); recent.spacing = 0; recent.distribution = .fillEqually
             for hex in UserDefaults.standard.stringArray(forKey: "inkdrive.recent-colors") ?? ["#202020", "#2455D6", "#DB3249", "#FFFFFF"] {
@@ -90,6 +92,7 @@ import UIKit
         stack.addArrangedSubview(more)
     }
     private func publish() {
+        if tool == .pen { settings.opacity = 1 }
         colorCodeField?.text = settings.color
         var colors = UserDefaults.standard.stringArray(forKey: "inkdrive.recent-colors") ?? []
         colors.removeAll { $0 == settings.color }; colors.insert(settings.color, at: 0)

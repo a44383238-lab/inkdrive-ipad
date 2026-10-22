@@ -45,6 +45,14 @@ export function validateInk(doc) {
           command.forEach(v => number(v, 'mask coordinate'));
         }
       }
+      if (stroke.outline != null) {
+        requireThat(Array.isArray(stroke.outline) && stroke.outline.length >= 2 && stroke.outline.length <= 100000, 'outline');
+        for (const command of stroke.outline) {
+          requireThat(Array.isArray(command) && Number.isInteger(command[0]) && [3,3,5,7,1][command[0]] === command.length, 'outline command');
+          command.forEach(v => number(v, 'outline coordinate'));
+        }
+        requireThat(stroke.outline[0][0] === 0 && stroke.outline.at(-1)[0] === 4, 'outline must be closed');
+      }
       requireThat(Array.isArray(stroke.samples) && stroke.samples.length > 0 && stroke.samples.length <= 100000, 'samples');
       let last = -1;
       for (const sample of stroke.samples) {
@@ -103,7 +111,8 @@ export function renderPageSVG(doc, pageId) {
   const paths = page.strokes.filter(s => visible.has(s.layerId)).map(stroke => {
     const alpha = stroke.samples[0].opacity;
     let path;
-    if (stroke.samples.every(p => p.opacity === alpha)) path = `<path d="${strokeOutline(stroke)}" fill-opacity="${n(stroke.opacity * alpha)}"/>`;
+    if (stroke.outline) path = `<path d="${stroke.outline.map(c=>['M','L','Q','C','Z'][c[0]]+c.slice(1).map(n).join(' ')).join('')}" fill-opacity="${n(stroke.opacity)}"/>`;
+    else if (stroke.samples.every(p => p.opacity === alpha)) path = `<path d="${strokeOutline(stroke)}" fill-opacity="${n(stroke.opacity * alpha)}"/>`;
     else path = stroke.samples.map((p,i) => `<path d="${strokeOutline({...stroke,samples:i ? [stroke.samples[i-1],p] : [p]})}" fill-opacity="${n(stroke.opacity*p.opacity)}"/>`).join('');
     const id = `mask-${stroke.id}`;
     const mask = stroke.mask ? `<defs><clipPath id="${id}"><path d="${stroke.mask.map(c=>['M','L','Q','C','Z'][c[0]]+c.slice(1).map(n).join(' ')).join('')}" clip-rule="${stroke.maskEvenOdd ? 'evenodd' : 'nonzero'}"/></clipPath></defs>` : '';

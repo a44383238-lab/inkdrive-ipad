@@ -21,12 +21,14 @@ targets:
       - path: Assets.xcassets
       - path: ../modules/inkdrive/ios/Resources/Icons
         buildPhase: resources
+      - path: ../ThirdParty/perfect-freehand-LICENSE.txt
+        buildPhase: resources
     info:
       path: Info.plist
       properties:
         CFBundleDisplayName: InkDrive
-        CFBundleShortVersionString: '0.7.0'
-        CFBundleVersion: '7'
+        CFBundleShortVersionString: '0.8.0'
+        CFBundleVersion: '8'
         LSRequiresIPhoneOS: true
         LSSupportsOpeningDocumentsInPlace: true
         UIFileSharingEnabled: true

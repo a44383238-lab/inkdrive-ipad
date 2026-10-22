@@ -8,11 +8,11 @@ enum InkEraser {
         let brush = from == to ? CGPath(ellipseIn: CGRect(x: to.x - radius, y: to.y - radius, width: radius * 2, height: radius * 2), transform: nil) : trace.copy(strokingWithWidth: radius * 2, lineCap: .round, lineJoin: .round, miterLimit: 1)
         let strokes = drawing.strokes.compactMap { stroke -> PKStroke? in
             let matches = target == "all" || (target == "marker" ? stroke.ink.inkType == .marker : stroke.ink.inkType != .marker)
-            guard matches, stroke.renderBounds.intersects(brush.boundingBoxOfPath) else { return stroke }
+            guard matches, PerfectInk.bounds(stroke).intersects(brush.boundingBoxOfPath) else { return stroke }
             let points = Array(stroke.path.interpolatedPoints(by: .distance(max(0.5, radius / 3))))
             guard !points.isEmpty else { return stroke }
             var transform = stroke.transform
-            guard let pageOutline = VectorInkPainter.outline(points).copy(using: &transform) else { return stroke }
+            guard let pageOutline = PerfectInk.outline(stroke).copy(using: &transform) else { return stroke }
             let localMask = stroke.mask?.cgPath
             let visible: CGPath
             if let localMask, let pageMask = localMask.copy(using: &transform) { visible = pageOutline.intersection(pageMask) }

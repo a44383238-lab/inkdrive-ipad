@@ -12,6 +12,11 @@ enum VectorInkPainter {
                 context.addPath(mask.cgPath)
                 context.clip(using: mask.usesEvenOddFillRule ? .evenOdd : .winding)
             }
+            if PerfectInk.owns(stroke) {
+                context.setFillColor(stroke.ink.color.withAlphaComponent(1).cgColor)
+                context.addPath(PerfectInk.outline(stroke)); context.fillPath()
+                context.restoreGState(); continue
+            }
             let points = Array(stroke.path.interpolatedPoints(by: .distance(0.5)))
             guard !points.isEmpty, points.allSatisfy({ p in
                 p.location.x.isFinite && p.location.y.isFinite && p.size.width.isFinite && p.size.height.isFinite && p.size.width > 0 && p.size.height > 0 && p.opacity.isFinite

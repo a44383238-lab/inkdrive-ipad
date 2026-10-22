@@ -31,6 +31,11 @@ struct DocumentAdapter: Codable {
                 if command.count > 1 { for i in stride(from: 1, to: command.count, by: 2) { let (x,y) = point(command[i],command[i+1]); result += [x,y] } }
                 return result
             }
+            output.outline = input.outline?.map { command in
+                var result = [command[0]]
+                if command.count > 1 { for i in stride(from: 1, to: command.count, by: 2) { let (x,y) = point(command[i],command[i+1]); result += [x,y] } }
+                return result
+            }
             output.maskEvenOdd = input.maskEvenOdd; return output
         }
         return PortableInkPage(id: page.id, kind: kind,

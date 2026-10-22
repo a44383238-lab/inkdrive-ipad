@@ -107,6 +107,9 @@ import AVFoundation
     override func viewDidLoad() {
         super.viewDidLoad(); view.backgroundColor = UIColor(white: 0.105, alpha: 1); overrideUserInterfaceStyle = .dark; view.tintColor = UIColor(hex: "#F4CA52")
         provider.editor = self
+        observerTokens.append(NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: pdfView, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.provider.overlays.values.forEach { $0.updateInkScale() } }
+        })
         pdfView.isInMarkupMode = true
         pdfView.pageOverlayViewProvider = provider
         pdfView.document = session.model.pdf
@@ -737,6 +740,7 @@ import AVFoundation
         controller.popoverPresentationController?.delegate = self
         present(controller, animated: true)
     }
+    func setInkInputActive(_ active: Bool) { viewport.setInkActive(active, in: pdfView) }
     private func pagePoint(_ point: CGPoint, record: NotebookPage) -> CGPoint {
         let crop = record.page.bounds(for: .cropBox)
         return CGPoint(x: crop.minX + point.x, y: crop.maxY - point.y)
