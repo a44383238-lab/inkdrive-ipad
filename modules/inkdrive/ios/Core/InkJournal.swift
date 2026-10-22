@@ -117,10 +117,11 @@ final class InkCommitStore: @unchecked Sendable {
             layers: [PortableInkLayer(id: "main", name: "필기", visible: true)], pages: pages)
         if adapter != nil { ink.previewRevision = CoordinatedStore.digest(preview) }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        let archives = Dictionary(uniqueKeysWithValues: model.pages.map { ($0.id.uuidString.lowercased(), $0.drawing.dataRepresentation().base64EncodedString()) })
+        let archives = try Dictionary(uniqueKeysWithValues: model.pages.map { ($0.id.uuidString.lowercased(), try encoder.encode(NativeInkArchive($0.drawing)).base64EncodedString()) })
         var descriptor: [String: Any] = ["format": "inkdrive.commit", "version": 1, "documentId": model.documentID.uuidString.lowercased(),
             "deviceId": device, "createdAt": formatter.string(from: now), "parents": parent.map { [$0] } ?? [], "inkRevision": revision + 1,
             "source": try object(source), "ink": try object(encoder.encode(ink)), "native": try object(encoder.encode(archives)),
+            "nativeEncoding": "inkdrive.archive.v1",
             "file": ["path": String(documentURL.path.dropFirst(libraryRoot.path.count + 1)), "sha256": CoordinatedStore.digest(fileBytes)]]
         if adapter != nil { descriptor["preview"] = try object(preview) }
         let bytes = try JSONSerialization.data(withJSONObject: descriptor, options: [.sortedKeys, .withoutEscapingSlashes])

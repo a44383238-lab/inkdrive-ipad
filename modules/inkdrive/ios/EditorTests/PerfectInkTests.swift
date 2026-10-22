@@ -55,7 +55,7 @@ import PDFKit
     }
     func testNativeArchiveAndPDFPreserveVisibleOutlineAndPressure() throws {
         let stroke = try XCTUnwrap(PerfectInk.make(line(), width: 4, color: .black))
-        let drawing = PKDrawing(strokes: [stroke]), restored = try PKDrawing(data: drawing.dataRepresentation())
+        let drawing = PKDrawing(strokes: [stroke]), restored = try NativeInkArchive(drawing).decode()
         let reopenedStroke = try XCTUnwrap(restored.strokes.first)
         XCTAssertTrue(PerfectInk.owns(reopenedStroke), "Archive carrier must remain identifiable after reopening")
         // PKDrawing canonicalizes mask winding/start points and quantizes coordinates on archive.
@@ -203,8 +203,16 @@ import PDFKit
         let editor = try editor(), record = editor.session.model.pages[0]
         let circle = (0...96).map { i in InkSample(point: CGPoint(x: 90 + 25*cos(Double(i)/96 * .pi*2), y: 90 + 25*sin(Double(i)/96 * .pi*2)),pressure: 0.5,time: Double(i)/240) }
         let stroke = try XCTUnwrap(PerfectInk.make(circle,width: 4,color: .black))
-        let archived = try PKDrawing(data: PKDrawing(strokes:[stroke]).dataRepresentation())
+        let original = PKDrawing(strokes:[stroke])
+        let raw = try PKDrawing(data:original.dataRepresentation())
+        print("Constant-pressure native carrier after raw archive:",raw.strokes.first?.ink.inkType.rawValue ?? "missing")
+        let encoded = try JSONEncoder().encode(NativeInkArchive(original))
+        let archived = try JSONDecoder().decode(NativeInkArchive.self, from: encoded).decode()
+        XCTAssertTrue(PerfectInk.owns(try XCTUnwrap(archived.strokes.first)))
         record.drawing = archived
+        let reopened = try PDFModel(data: editor.session.model.snapshot())
+        record.drawing = reopened.pages[0].drawing
+        XCTAssertTrue(PerfectInk.owns(try XCTUnwrap(record.drawing.strokes.first)))
         let overlay = PageOverlay(record: record,editor: editor); overlay.frame = CGRect(x:0,y:0,width:160,height:160); overlay.layoutIfNeeded()
         var bytes = [UInt8](repeating:0,count:160*160*4)
         try bytes.withUnsafeMutableBytes { pixels in
@@ -213,5 +221,25 @@ import PDFKit
         }
         XCTAssertEqual(bytes[(90*160+90)*4+3],0,"A circle is an outline, not a filled disk")
         XCTAssertGreaterThan(bytes[(90*160+115)*4+3],240,"The custom stroke must be visible and opaque on the actual layer")
+        overlay.previewSelection([0], by: CGAffineTransform(translationX: 20,y: 0))
+        var moved = [UInt8](repeating: 0,count: bytes.count)
+        try moved.withUnsafeMutableBytes { pixels in
+            let context = try XCTUnwrap(CGContext(data:pixels.baseAddress,width:160,height:160,bitsPerComponent:8,bytesPerRow:640,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
+            overlay.layer.render(in:context)
+        }
+        XCTAssertEqual(moved[(90*160+115)*4+3],0,"The actual ink must leave its previous position during selection preview")
+        XCTAssertGreaterThan(moved[(90*160+135)*4+3],240,"Selection preview moves the visible ink, not just the bounding box")
+    }
+    func testArchiveRejectsInvalidOwnershipAndPreservesLegacyInk() throws {
+        let stroke = try XCTUnwrap(PerfectInk.make(line(), width: 4, color: .black))
+        let drawing = PKDrawing(strokes: [stroke])
+        XCTAssertThrowsError(try NativeInkArchive.restore(drawing, perfect: [1]))
+        XCTAssertThrowsError(try NativeInkArchive.restore(drawing, perfect: [0,0]))
+        let legacy = PKStroke(ink: PKInk(.pen,color: .blue),path: stroke.path)
+        let mixed = PKDrawing(strokes: [legacy,stroke])
+        let archive = try JSONDecoder().decode(NativeInkArchive.self,from: JSONEncoder().encode(NativeInkArchive(mixed)))
+        let restored = try archive.decode()
+        XCTAssertFalse(PerfectInk.owns(restored.strokes[0]))
+        XCTAssertTrue(PerfectInk.owns(restored.strokes[1]))
     }
 }

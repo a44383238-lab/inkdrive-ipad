@@ -48,6 +48,12 @@ import PDFKit
         eraserCircle.lineWidth = 1; layer.addSublayer(eraserCircle)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for shape in [liveInk, outline, eraserCircle] { shape.frame = bounds }
+        CATransaction.commit()
+    }
     func clearSelection() { overlay?.previewSelection([], by: nil); selected.removeAll(); selectionBounds = .null; outline.path = nil }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }) else { return }
@@ -222,7 +228,11 @@ import PDFKit
     func copySelection() {
         guard let drawing = overlay?.record.drawing else { return }
         let strokes = drawing.strokes.enumerated().filter { selected.contains($0.offset) }.map(\.element)
-        UIPasteboard.general.setData(PKDrawing(strokes: strokes).dataRepresentation(), forPasteboardType: "app.inkdrive.drawing")
+        var item: [String: Any] = ["app.inkdrive.drawing": PKDrawing(strokes: strokes).dataRepresentation()]
+        if let data = try? JSONEncoder().encode(NativeInkArchive(PKDrawing(strokes: strokes))) {
+            item["app.inkdrive.solid-ink.v1"] = data
+        }
+        UIPasteboard.general.items = [item]
     }
     func deleteSelection() {
         guard let overlay, let editor = overlay.editor else { return }
@@ -230,9 +240,12 @@ import PDFKit
         editor.session.changeDrawing(pageID: overlay.record.id, to: PKDrawing(strokes: strokes)); clearSelection()
     }
     func paste() {
-        guard let overlay, let editor = overlay.editor,
-              let bytes = UIPasteboard.general.data(forPasteboardType: "app.inkdrive.drawing"),
-              let drawing = try? PKDrawing(data: bytes) else { return }
+        guard let overlay, let editor = overlay.editor else { return }
+        let drawing: PKDrawing
+        if let bytes = UIPasteboard.general.data(forPasteboardType: "app.inkdrive.solid-ink.v1"),
+           let archive = try? JSONDecoder().decode(NativeInkArchive.self,from: bytes), let restored = try? archive.decode() { drawing = restored }
+        else if let bytes = UIPasteboard.general.data(forPasteboardType: "app.inkdrive.drawing"),let restored = try? PKDrawing(data: bytes) { drawing = restored }
+        else { return }
         let offset = drawing.transformed(using: CGAffineTransform(translationX: 20, y: 20))
         editor.session.changeDrawing(pageID: overlay.record.id, to: PKDrawing(strokes: overlay.record.drawing.strokes + offset.strokes))
     }

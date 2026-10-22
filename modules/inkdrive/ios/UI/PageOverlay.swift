@@ -89,10 +89,18 @@ final class PencilCanvas: PKCanvasView {
         for (layer, stroke) in zip(perfectLayers, strokes) {
             layer.fillRule = stroke.mask?.usesEvenOddFillRule == true ? .evenOdd : .nonZero
             layer.path = PerfectInk.outline(stroke); layer.fillColor = stroke.ink.color.withAlphaComponent(1).cgColor
-            layer.setAffineTransform(stroke.transform)
+            position(layer, path: PerfectInk.outline(stroke), transform: stroke.transform)
         }
         CATransaction.commit()
         updateInkScale()
+    }
+    private func position(_ layer: CAShapeLayer, path: CGPath, transform: CGAffineTransform) {
+        let box = path.boundingBoxOfPath
+        guard !box.isNull, !box.isEmpty else { return }
+        // A real local bound is required for layer snapshots and clipping. Keep it stroke-sized,
+        // rather than allocating a page-sized backing surface for every stroke.
+        layer.bounds = box; layer.anchorPoint = .zero; layer.position = box.origin.applying(transform)
+        layer.setAffineTransform(CGAffineTransform(a: transform.a,b: transform.b,c: transform.c,d: transform.d,tx: 0,ty: 0))
     }
     func updateInkScale() {
         let scale = UIScreen.main.scale * max(1, editor?.pdfView.scaleFactor ?? 1)
@@ -107,7 +115,7 @@ final class PencilCanvas: PKCanvasView {
         for (index, stroke) in workingDrawing.strokes.enumerated() where PerfectInk.owns(stroke) {
             if layerIndex < perfectLayers.count {
                 let delta = selection.contains(index) ? (transform ?? .identity) : .identity
-                perfectLayers[layerIndex].setAffineTransform(stroke.transform.concatenating(delta))
+                position(perfectLayers[layerIndex], path: PerfectInk.outline(stroke), transform: stroke.transform.concatenating(delta))
             }
             layerIndex += 1
         }
