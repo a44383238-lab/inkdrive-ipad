@@ -83,6 +83,7 @@ enum PortableInkExporter {
                 transform: transform, samples: samples)
             if PerfectInk.owns(stroke) {
                 output.outline = PerfectInk.commands(PerfectInk.outline(stroke)) { CGPoint(x: crop.minX + $0.x, y: crop.maxY - $0.y) }
+                output.maskEvenOdd = stroke.mask?.usesEvenOddFillRule ?? false
                 // The outline is already the visible result, including any partial erasing.
                 strokes.append(output); continue
             }

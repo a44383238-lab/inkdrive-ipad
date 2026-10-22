@@ -46,6 +46,7 @@ export function validateInk(doc) {
         }
       }
       if (stroke.outline != null) {
+        requireThat(stroke.maskEvenOdd == null || typeof stroke.maskEvenOdd === 'boolean', 'outline fill rule');
         requireThat(Array.isArray(stroke.outline) && stroke.outline.length >= 2 && stroke.outline.length <= 100000, 'outline');
         for (const command of stroke.outline) {
           requireThat(Array.isArray(command) && Number.isInteger(command[0]) && [3,3,5,7,1][command[0]] === command.length, 'outline command');
@@ -111,7 +112,7 @@ export function renderPageSVG(doc, pageId) {
   const paths = page.strokes.filter(s => visible.has(s.layerId)).map(stroke => {
     const alpha = stroke.samples[0].opacity;
     let path;
-    if (stroke.outline) path = `<path d="${stroke.outline.map(c=>['M','L','Q','C','Z'][c[0]]+c.slice(1).map(n).join(' ')).join('')}" fill-opacity="${n(stroke.opacity)}"/>`;
+    if (stroke.outline) path = `<path d="${stroke.outline.map(c=>['M','L','Q','C','Z'][c[0]]+c.slice(1).map(n).join(' ')).join('')}" fill-rule="${stroke.maskEvenOdd ? 'evenodd' : 'nonzero'}" fill-opacity="${n(stroke.opacity)}"/>`;
     else if (stroke.samples.every(p => p.opacity === alpha)) path = `<path d="${strokeOutline(stroke)}" fill-opacity="${n(stroke.opacity * alpha)}"/>`;
     else path = stroke.samples.map((p,i) => `<path d="${strokeOutline({...stroke,samples:i ? [stroke.samples[i-1],p] : [p]})}" fill-opacity="${n(stroke.opacity*p.opacity)}"/>`).join('');
     const id = `mask-${stroke.id}`;

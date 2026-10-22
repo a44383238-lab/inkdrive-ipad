@@ -87,6 +87,7 @@ final class PencilCanvas: PKCanvasView {
             perfectSurface.layer.addSublayer(layer); perfectLayers.append(layer)
         }
         for (layer, stroke) in zip(perfectLayers, strokes) {
+            layer.fillRule = stroke.mask?.usesEvenOddFillRule == true ? .evenOdd : .nonZero
             layer.path = PerfectInk.outline(stroke); layer.fillColor = stroke.ink.color.withAlphaComponent(1).cgColor
             layer.setAffineTransform(stroke.transform)
         }
@@ -98,6 +99,18 @@ final class PencilCanvas: PKCanvasView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         perfectSurface.contentScaleFactor = scale
         for layer in perfectLayers { layer.contentsScale = scale; layer.shouldRasterize = false }
+        CATransaction.commit()
+    }
+    func previewSelection(_ selection: Set<Int>, by transform: CGAffineTransform?) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        var layerIndex = 0
+        for (index, stroke) in workingDrawing.strokes.enumerated() where PerfectInk.owns(stroke) {
+            if layerIndex < perfectLayers.count {
+                let delta = selection.contains(index) ? (transform ?? .identity) : .identity
+                perfectLayers[layerIndex].setAffineTransform(stroke.transform.concatenating(delta))
+            }
+            layerIndex += 1
+        }
         CATransaction.commit()
     }
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {

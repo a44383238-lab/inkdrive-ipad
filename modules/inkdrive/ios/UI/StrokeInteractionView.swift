@@ -48,7 +48,7 @@ import PDFKit
         eraserCircle.lineWidth = 1; layer.addSublayer(eraserCircle)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    func clearSelection() { selected.removeAll(); selectionBounds = .null; outline.path = nil }
+    func clearSelection() { overlay?.previewSelection([], by: nil); selected.removeAll(); selectionBounds = .null; outline.path = nil }
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = touches.first(where: { $0.type == .pencil }) else { return }
         if overlay?.editor?.tool == .pen {
@@ -79,9 +79,20 @@ import PDFKit
         guard let touch = touches.first(where: { $0.type == .pencil }), let first = points.first else { return }
         if erasing { let next = touch.location(in: self); updateEraser(from: endPoint, to: next); endPoint = next; return }
         endPoint = touch.location(in: self); points.append(endPoint)
-        if let anchor = resizeAnchor { drawBounds(CGRect(x: min(anchor.x, endPoint.x), y: min(anchor.y, endPoint.y), width: abs(endPoint.x - anchor.x), height: abs(endPoint.y - anchor.y))); return }
+        if let anchor = resizeAnchor, let corner = resizeCorner {
+            let x = abs(corner.x - anchor.x) > 0.1 ? (endPoint.x - anchor.x) / (corner.x - anchor.x) : 1
+            let y = abs(corner.y - anchor.y) > 0.1 ? (endPoint.y - anchor.y) / (corner.y - anchor.y) : 1
+            let transform = CGAffineTransform(translationX: -anchor.x, y: -anchor.y)
+                .concatenating(CGAffineTransform(scaleX: min(5,max(0.1,x)), y: min(5,max(0.1,y))))
+                .concatenating(CGAffineTransform(translationX: anchor.x, y: anchor.y))
+            overlay?.previewSelection(selected, by: transform)
+            drawBounds(selectionBounds.applying(transform)); return
+        }
         let path = UIBezierPath()
-        if moving { path.append(UIBezierPath(rect: selectionBounds.offsetBy(dx: endPoint.x - first.x, dy: endPoint.y - first.y))) }
+        if moving {
+            overlay?.previewSelection(selected, by: CGAffineTransform(translationX: endPoint.x - first.x, y: endPoint.y - first.y))
+            path.append(UIBezierPath(rect: selectionBounds.offsetBy(dx: endPoint.x - first.x, dy: endPoint.y - first.y)))
+        }
         else if overlay?.editor?.tool == .lasso { path.move(to: first); points.dropFirst().forEach { path.addLine(to: $0) } }
         else { path.move(to: first); path.addLine(to: endPoint) }
         outline.path = path.cgPath
@@ -89,7 +100,7 @@ import PDFKit
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard touches.contains(where: { $0.type == .pencil }) else { return }
         if isInking { finishPen(presentSelection: false); return }
-        finishErasing(); points = []; resizeCorner = nil; resizeAnchor = nil; updateSelectionBounds()
+        finishErasing(); overlay?.previewSelection([],by: nil); points = []; resizeCorner = nil; resizeAnchor = nil; updateSelectionBounds()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if isInking {

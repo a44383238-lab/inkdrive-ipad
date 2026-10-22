@@ -199,4 +199,19 @@ import PDFKit
         let documents = objects.compactMap { file in (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(PortableInkDocument.self,from: $0) } }
         XCTAssertNotNil(documents.first?.pages.first?.strokes.first?.outline)
     }
+    func testCustomSurfaceDisplaysSolidBlackAndKeepsTheMiddleOfACircleEmpty() throws {
+        let editor = try editor(), record = editor.session.model.pages[0]
+        let circle = (0...96).map { i in InkSample(point: CGPoint(x: 90 + 25*cos(Double(i)/96 * .pi*2), y: 90 + 25*sin(Double(i)/96 * .pi*2)),pressure: 0.5,time: Double(i)/240) }
+        let stroke = try XCTUnwrap(PerfectInk.make(circle,width: 4,color: .black))
+        let archived = try PKDrawing(data: PKDrawing(strokes:[stroke]).dataRepresentation())
+        record.drawing = archived
+        let overlay = PageOverlay(record: record,editor: editor); overlay.frame = CGRect(x:0,y:0,width:160,height:160); overlay.layoutIfNeeded()
+        var bytes = [UInt8](repeating:0,count:160*160*4)
+        try bytes.withUnsafeMutableBytes { pixels in
+            let context = try XCTUnwrap(CGContext(data:pixels.baseAddress,width:160,height:160,bitsPerComponent:8,bytesPerRow:640,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
+            overlay.layer.render(in:context)
+        }
+        XCTAssertEqual(bytes[(90*160+90)*4+3],0,"A circle is an outline, not a filled disk")
+        XCTAssertGreaterThan(bytes[(90*160+115)*4+3],240,"The custom stroke must be visible and opaque on the actual layer")
+    }
 }

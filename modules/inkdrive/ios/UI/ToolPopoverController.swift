@@ -62,7 +62,7 @@ import UIKit
             colorHeader.addArrangedSubview(paletteTitle); colorHeader.addArrangedSubview(UIView()); colorHeader.addArrangedSubview(colorCode)
             stack.insertArrangedSubview(colorHeader, at: stack.arrangedSubviews.firstIndex(of: swatches) ?? 2)
             let row = UIStackView(); row.alignment = .center; row.spacing = 8
-            row.addArrangedSubview(slider(value: settings.width, min: 0.1, max: 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
+            row.addArrangedSubview(slider(value: settings.width, min: tool == .pen ? 0.3 : 0.1, max: tool == .pen ? Float(max(8, settings.width)) : 40, unit: "px") { [weak self] in self?.settings.width = $0; self?.publish() })
             stack.addArrangedSubview(row)
             if tool != .pen {
                 stack.addArrangedSubview(slider(value: settings.opacity * 100, min: 5, max: 100, unit: "%") { [weak self] in self?.settings.opacity = $0 / 100; self?.publish() })

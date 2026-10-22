@@ -107,6 +107,14 @@ import AVFoundation
             toolbar.entries[i].settings.opacity = 1; normalized = true
         }
         if normalized { persistToolbar() }
+        if !UserDefaults.standard.bool(forKey: "inkdrive.perfect-pen.v1") {
+            if let index = toolbar.entries.firstIndex(where: { $0.tool == .pen && ["#202020", "#000000"].contains($0.settings.color.uppercased()) }) {
+                toolbar.entries[index].settings.color = "#000000"
+                toolbar.entries[index].settings.width = max(1.5, toolbar.entries[index].settings.width)
+                toolbar.selected = toolbar.entries[index].id; tool = .pen
+            }
+            UserDefaults.standard.set(true, forKey: "inkdrive.perfect-pen.v1"); persistToolbar()
+        }
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     override func viewDidLoad() {
