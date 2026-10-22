@@ -219,16 +219,26 @@ import PDFKit
             let context = try XCTUnwrap(CGContext(data:pixels.baseAddress,width:160,height:160,bitsPerComponent:8,bytesPerRow:640,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
             overlay.layer.render(in:context)
         }
-        XCTAssertEqual(bytes[(90*160+90)*4+3],0,"A circle is an outline, not a filled disk")
-        XCTAssertGreaterThan(bytes[(90*160+115)*4+3],240,"The custom stroke must be visible and opaque on the actual layer")
+        let visible = (0..<160*160).filter { bytes[$0*4+3] > 240 }
+        let rows = visible.map { $0 / 160 }, columns = visible.map { $0 % 160 }
+        print("Solid ring raster bounds:",columns.min() ?? -1,rows.min() ?? -1,columns.max() ?? -1,rows.max() ?? -1,"pixels:",visible.count)
+        // CALayer snapshots into a raw Quartz bitmap can invert the row order.
+        // Derive the ring's raster row from its opaque coverage, then verify its
+        // hollow center, expected horizontal geometry, and actual preview translation.
+        XCTAssertGreaterThan(visible.count, 150,"The custom stroke must be visible and opaque on the actual layer")
+        let centerRow = ((rows.min() ?? 90) + (rows.max() ?? 90)) / 2
+        XCTAssertEqual(columns.min() ?? -1,63,accuracy: 2)
+        XCTAssertEqual(columns.max() ?? -1,116,accuracy: 2)
+        XCTAssertEqual(bytes[(centerRow*160+90)*4+3],0,"A circle is an outline, not a filled disk")
+        XCTAssertGreaterThan(bytes[(centerRow*160+115)*4+3],240,"The visible circle edge must be opaque")
         overlay.previewSelection([0], by: CGAffineTransform(translationX: 20,y: 0))
         var moved = [UInt8](repeating: 0,count: bytes.count)
         try moved.withUnsafeMutableBytes { pixels in
             let context = try XCTUnwrap(CGContext(data:pixels.baseAddress,width:160,height:160,bitsPerComponent:8,bytesPerRow:640,space:CGColorSpaceCreateDeviceRGB(),bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue))
             overlay.layer.render(in:context)
         }
-        XCTAssertEqual(moved[(90*160+115)*4+3],0,"The actual ink must leave its previous position during selection preview")
-        XCTAssertGreaterThan(moved[(90*160+135)*4+3],240,"Selection preview moves the visible ink, not just the bounding box")
+        XCTAssertEqual(moved[(centerRow*160+115)*4+3],0,"The actual ink must leave its previous position during selection preview")
+        XCTAssertGreaterThan(moved[(centerRow*160+135)*4+3],240,"Selection preview moves the visible ink, not just the bounding box")
     }
     func testArchiveRejectsInvalidOwnershipAndPreservesLegacyInk() throws {
         let stroke = try XCTUnwrap(PerfectInk.make(line(), width: 4, color: .black))
