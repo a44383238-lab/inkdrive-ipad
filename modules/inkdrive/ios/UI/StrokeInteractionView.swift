@@ -54,6 +54,10 @@ import PDFKit
         if overlay?.editor?.tool == .pen {
             activePencil = touch; beginPen(sample(touch)); return
         }
+        // Palm movement must not shift the page while resizing a freshly recognized shape either.
+        if let overlay, let editor = overlay.editor {
+            editor.setInkInputActive(true); editor.session.beginInkInput(overlay.record.id)
+        }
         let point = touch.location(in: self); points = [point]; endPoint = point
         resizeCorner = nil; resizeAnchor = nil
         if let overlay, overlay.editor?.tool == .eraser {
@@ -100,6 +104,9 @@ import PDFKit
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard touches.contains(where: { $0.type == .pencil }) else { return }
         if isInking { finishPen(presentSelection: false); return }
+        if let overlay, let editor = overlay.editor {
+            editor.setInkInputActive(false); editor.session.endInkInput(overlay.record.id)
+        }
         finishErasing(); overlay?.previewSelection([],by: nil); points = []; resizeCorner = nil; resizeAnchor = nil; updateSelectionBounds()
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -109,6 +116,7 @@ import PDFKit
             finishPen(); return
         }
         guard let touch = touches.first(where: { $0.type == .pencil }), let overlay, let editor = overlay.editor, let first = points.first else { return }
+        defer { editor.setInkInputActive(false); editor.session.endInkInput(overlay.record.id) }
         if erasing { updateEraser(from: endPoint, to: touch.location(in: self)); finishErasing(); return }
         endPoint = touch.location(in: self)
         switch editor.tool {

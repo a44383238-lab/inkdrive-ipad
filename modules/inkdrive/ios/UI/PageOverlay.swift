@@ -37,7 +37,7 @@ final class PencilCanvas: PKCanvasView {
         self.record = record; self.editor = editor; workingDrawing = record.drawing
         lastNativeData = PKDrawing(strokes: record.drawing.strokes.filter { !PerfectInk.owns($0) }).dataRepresentation()
         super.init(frame: .zero)
-        isOpaque = false; backgroundColor = .clear
+        isOpaque = false; backgroundColor = .clear; clipsToBounds = true
         canvas.drawing = PKDrawing(strokes: record.drawing.strokes.filter { !PerfectInk.owns($0) }); canvas.delegate = self; canvas.backgroundColor = .clear; canvas.isOpaque = false
         canvas.overrideUserInterfaceStyle = .light
         canvas.drawingPolicy = .pencilOnly; canvas.isScrollEnabled = false

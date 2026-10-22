@@ -53,7 +53,7 @@ import PDFKit
         XCTAssertTrue(path.contains(CGPoint(x: 128, y: 62)))
         XCTAssertFalse(path.contains(CGPoint(x: 35, y: 62)))
     }
-    func testNativeArchiveAndPDFKeepExactCustomOutlineAndPressure() throws {
+    func testNativeArchiveAndPDFPreserveVisibleOutlineAndPressure() throws {
         let stroke = try XCTUnwrap(PerfectInk.make(line(), width: 4, color: .black))
         let drawing = PKDrawing(strokes: [stroke]), restored = try PKDrawing(data: drawing.dataRepresentation())
         let reopenedStroke = try XCTUnwrap(restored.strokes.first)
