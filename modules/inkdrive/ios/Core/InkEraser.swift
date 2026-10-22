@@ -2,7 +2,7 @@ import UIKit
 import PencilKit
 
 enum InkEraser {
-    static func erase(_ drawing: PKDrawing, from: CGPoint, to: CGPoint, width: CGFloat, partial: Bool, target: String) -> PKDrawing {
+    static func erase(_ drawing: PKDrawing, from: CGPoint, to: CGPoint, width: CGFloat, partial: Bool, target: String, didErase: ((PKStroke) -> Void)? = nil) -> PKDrawing {
         let radius = max(2, width / 2)
         let trace = CGMutablePath(); trace.move(to: from); trace.addLine(to: to)
         let brush = from == to ? CGPath(ellipseIn: CGRect(x: to.x - radius, y: to.y - radius, width: radius * 2, height: radius * 2), transform: nil) : trace.copy(strokingWithWidth: radius * 2, lineCap: .round, lineJoin: .round, miterLimit: 1)
@@ -18,6 +18,7 @@ enum InkEraser {
             if let localMask, let pageMask = localMask.copy(using: &transform) { visible = pageOutline.intersection(pageMask) }
             else { visible = pageOutline }
             guard visible.intersects(brush) else { return stroke }
+            didErase?(stroke)
             guard partial else { return nil }
             var inverse = stroke.transform.inverted()
             guard let localBrush = brush.copy(using: &inverse) else { return stroke }

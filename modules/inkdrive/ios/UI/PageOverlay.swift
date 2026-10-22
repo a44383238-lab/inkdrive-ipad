@@ -12,7 +12,10 @@ final class PencilCanvas: PKCanvasView {
     let record: NotebookPage
     weak var editor: EditorViewController?
     private var synchronizing = false
-    private var lastCommit: Data
+    private var lastNativeData: Data
+    private var nativeChanged = false
+    private var customChanged = false
+    private var publishing = false
     private var toolActive = false
     private var openedGroup = false
     private var closeGroupWork: DispatchWorkItem?
@@ -31,7 +34,8 @@ final class PencilCanvas: PKCanvasView {
         return PKDrawing(strokes: merged)
     }
     init(record: NotebookPage, editor: EditorViewController) {
-        self.record = record; self.editor = editor; lastCommit = record.drawing.dataRepresentation(); workingDrawing = record.drawing
+        self.record = record; self.editor = editor; workingDrawing = record.drawing
+        lastNativeData = PKDrawing(strokes: record.drawing.strokes.filter { !PerfectInk.owns($0) }).dataRepresentation()
         super.init(frame: .zero)
         isOpaque = false; backgroundColor = .clear
         canvas.drawing = PKDrawing(strokes: record.drawing.strokes.filter { !PerfectInk.owns($0) }); canvas.delegate = self; canvas.backgroundColor = .clear; canvas.isOpaque = false
@@ -61,15 +65,17 @@ final class PencilCanvas: PKCanvasView {
         if tool != .lasso { interaction.clearSelection() }
     }
     func refresh() {
-        guard !toolActive else { return }
-        let data = record.drawing.dataRepresentation()
-        guard data != lastCommit else { return }
-        setDrawing(record.drawing); lastCommit = data
+        guard !toolActive, !publishing else { return }
+        setDrawing(record.drawing); customChanged = false
         interaction.clearSelection()
     }
-    func setDrawing(_ drawing: PKDrawing) {
+    func setDrawing(_ drawing: PKDrawing, preservingNative: Bool = false) {
         synchronizing = true; workingDrawing = drawing
-        canvas.drawing = PKDrawing(strokes: drawing.strokes.filter { !PerfectInk.owns($0) })
+        if !preservingNative {
+            canvas.drawing = PKDrawing(strokes: drawing.strokes.filter { !PerfectInk.owns($0) })
+            lastNativeData = canvas.drawing.dataRepresentation(); nativeChanged = false
+        }
+        customChanged = true
         renderPerfectInk(); synchronizing = false
     }
     private func renderPerfectInk() {
@@ -96,6 +102,7 @@ final class PencilCanvas: PKCanvasView {
     }
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
         guard !synchronizing else { return }
+        nativeChanged = true
         // Keep serialization, undo snapshots and PDF invalidation off the live stroke path.
         guard !toolActive else { return }
         beginGroup(); commitDrawing(); scheduleGroupEnd()
@@ -115,11 +122,15 @@ final class PencilCanvas: PKCanvasView {
         editor?.setInkInputActive(false)
     }
     private func commitDrawing() {
+        guard nativeChanged || customChanged else { return }
+        if nativeChanged {
+            let data = canvas.drawing.dataRepresentation(); nativeChanged = false
+            if data == lastNativeData && !customChanged { return }
+            lastNativeData = data
+        }
         let current = drawing
-        let data = current.dataRepresentation()
-        guard data != lastCommit else { return }
-        lastCommit = data
-        workingDrawing = current
+        workingDrawing = current; customChanged = false
+        publishing = true; defer { publishing = false }
         editor?.session.changeDrawing(pageID: record.id, to: current, alreadyCompared: true)
     }
     private func beginGroup() {

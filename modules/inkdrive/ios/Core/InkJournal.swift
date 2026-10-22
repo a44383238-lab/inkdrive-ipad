@@ -4,7 +4,7 @@ import PencilKit
 struct InkRecovery: Codable { let expected: String; let pdf: Data }
 
 /// Device-local recovery survives failed iCloud writes and never travels with login credentials.
-final class InkJournal {
+final class InkJournal: @unchecked Sendable {
     let file: URL
     init(documentURL: URL, directory: URL? = nil) throws {
         let folder = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("InkDrive/Recovery")
@@ -20,7 +20,9 @@ final class InkJournal {
 }
 
 /// Content-addressed objects first, immutable descriptor last. Shared with the Windows reader.
-@MainActor final class InkCommitStore {
+final class InkCommitStore: @unchecked Sendable {
+    // Publication uses an independent PDFModel on a utility executor. Mutable head state is serialized here.
+    private let lock = NSRecursiveLock()
     let root: URL
     let documentURL: URL
     let libraryRoot: URL
@@ -76,6 +78,7 @@ final class InkJournal {
         return graph.filter { !ancestors.contains($0.key) }.map { ($0.key, $0.value.revision) }
     }
     func checkHead() throws {
+        lock.lock(); defer { lock.unlock() }
         let heads = try completeHeads()
         if heads.count > 1 || (heads.count == 1 && parent != heads[0].hash) { throw InkError.conflict }
     }
@@ -89,6 +92,7 @@ final class InkJournal {
         return ["sha256": hash, "bytes": bytes.count]
     }
     func publish(_ model: PDFModel, fileBytes: Data) throws {
+        lock.lock(); defer { lock.unlock() }
         let preview = try model.snapshot(includeInk: false)
         let adapterURL = URL(fileURLWithPath: documentURL.path + ".adapter.json")
         let adapter = FileManager.default.fileExists(atPath: adapterURL.path) ? try JSONDecoder().decode(DocumentAdapter.self, from: Data(contentsOf: adapterURL)) : nil

@@ -141,16 +141,22 @@ import PencilKit
                 let targetRevision = self.revision
                 let snapshot = try self.model.snapshotJob()
                 let bytes = try await Task.detached(priority: .utility) { try snapshot.render() }.value
-                try self.journal?.write(bytes, expected: self.digest)
+                let journal = self.journal, commits = self.commits, expected = self.digest
+                try await Task.detached(priority: .utility) {
+                    try journal?.write(bytes, expected: expected)
+                }.value
                 self.statusChanged?("원본 저장 중…")
                 do {
-                    try self.commits?.checkHead()
+                    try await Task.detached(priority: .utility) { try commits?.checkHead() }.value
                     self.digest = try await self.store.write(bytes, expected: self.digest)
-                    self.savedRevision = targetRevision
                     // Keep recovery until both normal PDF and the independent commit are durable.
-                    try self.journal?.write(bytes, expected: self.digest)
-                    try self.commits?.publish(PDFModel(data: bytes), fileBytes: bytes)
-                    if self.revision == targetRevision { try self.journal?.clear() }
+                    let writtenDigest = self.digest
+                    try await Task.detached(priority: .utility) {
+                        try journal?.write(bytes, expected: writtenDigest)
+                        if let commits { try commits.publish(PDFModel(data: bytes), fileBytes: bytes) }
+                    }.value
+                    self.savedRevision = targetRevision
+                    if self.revision == targetRevision { try await Task.detached(priority: .utility) { try journal?.clear() }.value }
                 } catch {
                     if let ink = error as? InkError, case .conflict = ink { self.blocked = true }
                     throw error

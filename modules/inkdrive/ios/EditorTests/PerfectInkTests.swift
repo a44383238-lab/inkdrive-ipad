@@ -15,6 +15,17 @@ import PDFKit
         editor.loadViewIfNeeded(); editor.view.frame = CGRect(x: 0, y: 0, width: 1024, height: 768); editor.view.layoutIfNeeded()
         return editor
     }
+    private func pixels(_ stroke: PKStroke, scale: Int = 1) throws -> [UInt8] {
+        let width = 160 * scale, height = 120 * scale
+        var pixels = [UInt8](repeating: 0,count: width * height * 4)
+        try pixels.withUnsafeMutableBytes { bytes in
+            let context = try XCTUnwrap(CGContext(data: bytes.baseAddress,width: width,height: height,bitsPerComponent: 8,bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.scaleBy(x: CGFloat(scale),y: CGFloat(scale))
+            VectorInkPainter.draw(PKDrawing(strokes: [stroke]),in: context)
+        }
+        return pixels
+    }
     func testSwiftOutlineMatchesUpstream123ReferencePolygons() throws {
         struct Fixture: Decodable { let name: String; let input: [[Double]]; let expected: [[Double]] }
         let url = try XCTUnwrap(Bundle.module.url(forResource: "perfect-freehand", withExtension: "json", subdirectory: "Fixtures"))
@@ -33,7 +44,10 @@ import PDFKit
     func testPressureChangesWidthButNeverChangesInkOpacity() throws {
         let stroke = try XCTUnwrap(PerfectInk.make(line(), width: 4, color: UIColor.black.withAlphaComponent(0.2)))
         XCTAssertTrue(PerfectInk.owns(stroke)); XCTAssertEqual(stroke.ink.color.cgColor.alpha, 1)
-        XCTAssertTrue(stroke.path.allSatisfy { $0.opacity == 1 })
+        // PencilKit normalizes a fountain-pen carrier's internal opacity. The owned renderer
+        // deliberately ignores that shader metadata and fills the visible outline at full alpha.
+        let rendered = try pixels(stroke), center = (60 * 160 + 128) * 4
+        XCTAssertEqual(Array(rendered[center..<center+4]),[0,0,0,255])
         XCTAssertGreaterThan(PerfectFreehand.radius(size: 4, pressure: 0.9), PerfectFreehand.radius(size: 4, pressure: 0.1) * 2)
         let path = PerfectInk.outline(stroke)
         XCTAssertTrue(path.contains(CGPoint(x: 128, y: 62)))
@@ -44,7 +58,16 @@ import PDFKit
         let drawing = PKDrawing(strokes: [stroke]), restored = try PKDrawing(data: drawing.dataRepresentation())
         let reopenedStroke = try XCTUnwrap(restored.strokes.first)
         XCTAssertTrue(PerfectInk.owns(reopenedStroke), "Archive carrier must remain identifiable after reopening")
-        XCTAssertEqual(PerfectInk.commands(PerfectInk.outline(reopenedStroke)), PerfectInk.commands(PerfectInk.outline(stroke)))
+        // PKDrawing canonicalizes mask winding/start points and quantizes coordinates on archive.
+        // Check the visible coverage at 4x and bounded geometric error, not command ordering.
+        let before = try pixels(stroke,scale: 4), after = try pixels(reopenedStroke,scale: 4)
+        var coverage = 0.0, difference = 0.0
+        for index in stride(from: 3,to: before.count,by: 4) {
+            coverage += Double(before[index]); difference += abs(Double(before[index]) - Double(after[index]))
+        }
+        XCTAssertLessThan(difference / max(1,coverage),0.02)
+        let a = PerfectInk.bounds(stroke), b = PerfectInk.bounds(reopenedStroke)
+        XCTAssertEqual(a.minX,b.minX,accuracy: 0.15); XCTAssertEqual(a.maxY,b.maxY,accuracy: 0.15)
         XCTAssertEqual(reopenedStroke.path.first?.force ?? 0, 0.05, accuracy: 0.00001)
         let model = try PDFModel(data: PDFModel.blank(template: .plain)); model.pages[0].drawing = drawing
         let reopened = try PDFModel(data: model.snapshot())
@@ -156,5 +179,24 @@ import PDFKit
         overlay.interaction.finishPen(); overlay.commit()
         XCTAssertEqual(editor.tool, .lasso)
         XCTAssertEqual(overlay.interaction.selected.count, 1)
+    }
+    func testCommitPublicationCanRunOffTheInputThreadWithoutLosingOutlines() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = try PDFModel(data: PDFModel.blank(template: .plain))
+        model.pages[0].drawing = PKDrawing(strokes: [try XCTUnwrap(PerfectInk.make(line(),width: 3,color: .black))])
+        let bytes = try model.snapshot(), url = directory.appendingPathComponent("note.pdf")
+        try bytes.write(to: url)
+        let commits = try InkCommitStore(root: directory,documentID: model.documentID,documentURL: url)
+        let background = try await Task.detached(priority: .utility) {
+            let notMain = !Thread.isMainThread
+            try commits.checkHead(); try commits.publish(PDFModel(data: bytes),fileBytes: bytes)
+            return notMain
+        }.value
+        XCTAssertTrue(background)
+        let objects = try FileManager.default.contentsOfDirectory(at: commits.root.appendingPathComponent("objects"),includingPropertiesForKeys: nil)
+        let documents = objects.compactMap { file in (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode(PortableInkDocument.self,from: $0) } }
+        XCTAssertNotNil(documents.first?.pages.first?.strokes.first?.outline)
     }
 }

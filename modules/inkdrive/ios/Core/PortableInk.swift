@@ -35,7 +35,7 @@ struct PortableInkSample: Codable {
 }
 enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupportedTool, unsupportedColor, sampleBudget, sample }
 
-@MainActor enum PortableInkExporter {
+enum PortableInkExporter {
     static func document(drawing: PKDrawing, documentID: UUID, pageID: UUID, strokeIDs: [UUID], sourceSHA256: String,
                          crop: CGRect, rotation: Int, revision: Int, createdAt: Date, now: Date = Date()) throws -> PortableInkDocument {
         guard sourceSHA256.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil,
@@ -69,13 +69,13 @@ enum PortableInkError: Error { case identity, bounds, unsupportedMask, unsupport
                 count += 1; guard count <= 2_000_000 else { throw PortableInkError.sampleBudget }
                 let values = [point.location.x, point.location.y, point.size.width, point.size.height, point.force, point.opacity]
                 guard values.allSatisfy({ $0.isFinite }), point.size.width > 0, point.size.height > 0,
-                      point.force >= 0, point.force <= 10, point.opacity >= 0, point.opacity <= 1, point.timeOffset.isFinite, point.timeOffset >= 0
+                      point.force >= 0, point.force <= 10, point.opacity >= 0, (PerfectInk.owns(stroke) || point.opacity <= 1), point.timeOffset.isFinite, point.timeOffset >= 0
                 else { throw PortableInkError.sample }
                 let width = PerfectInk.owns(stroke) ? PerfectFreehand.radius(size: point.size.width, pressure: point.force) * 2 : point.size.width
                 let height = PerfectInk.owns(stroke) ? width : point.size.height
                 return PortableInkSample(x: Double(crop.minX + point.location.x), y: Double(crop.maxY - point.location.y),
                     width: Double(width), height: Double(height), pressure: Double(point.force),
-                    opacity: Double(point.opacity), timeMs: point.timeOffset * 1000)
+                    opacity: PerfectInk.owns(stroke) ? 1 : Double(point.opacity), timeMs: point.timeOffset * 1000)
             }
             guard !samples.isEmpty, samples.count <= 100_000, now >= stroke.path.creationDate else { throw PortableInkError.sample }
             var output = PortableInkStroke(id: strokeIDs[index].uuidString.lowercased(), layerId: "main", tool: tool, color: color,

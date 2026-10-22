@@ -142,7 +142,11 @@ import PDFKit
         eraserCircle.path = CGPath(ellipseIn: CGRect(x: to.x - width / 2, y: to.y - width / 2, width: width, height: width), transform: nil)
         CATransaction.commit()
         eraserCircle.lineWidth = 1 / pageScale
-        overlay.setDrawing(InkEraser.erase(overlay.drawing, from: from, to: to, width: width, partial: editor.settings.partialEraser, target: editor.settings.eraserTarget))
+        var erased = false, nativeChanged = false
+        let drawing = InkEraser.erase(overlay.drawing, from: from, to: to, width: width, partial: editor.settings.partialEraser, target: editor.settings.eraserTarget) { stroke in
+            erased = true; if !PerfectInk.owns(stroke) { nativeChanged = true }
+        }
+        if erased { overlay.setDrawing(drawing, preservingNative: !nativeChanged) }
     }
     private func finishErasing() {
         guard erasing, let overlay else { return }; erasing = false
@@ -269,7 +273,7 @@ import PDFKit
         isInking = false; activePencil = nil; holdWork?.cancel(); holdWork = nil
         displayLink?.invalidate(); displayLink = nil
         if let stroke = PerfectInk.make(samples, width: inkSettings.width, color: inkSettings.uiColor, date: inkDate) {
-            overlay.setDrawing(PKDrawing(strokes: inkBase.strokes + [stroke]))
+            overlay.setDrawing(PKDrawing(strokes: inkBase.strokes + [stroke]), preservingNative: true)
         }
         overlay.canvasViewDidEndUsingTool(overlay.canvas)
         CATransaction.begin(); CATransaction.setDisableActions(true); liveInk.path = nil; CATransaction.commit()
