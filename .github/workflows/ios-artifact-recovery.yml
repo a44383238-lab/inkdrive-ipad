@@ -1,0 +1,73 @@
+name: Recover verified iPad IPA
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Exact tested application commit
+        required: true
+      verification_run:
+        description: Run whose device build and both test stages passed
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  recover:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source }}
+      - name: Verify source and prior test results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFY_RUN: ${{ inputs.verification_run }}
+        run: |
+          python3 - <<'PY'
+          import subprocess,json,os
+          run=os.environ['VERIFY_RUN']; assert run.isdigit()
+          base=f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{run}'
+          result=json.loads(subprocess.check_output(['gh','api',base]))
+          source=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert result['head_sha']==source and result['status']=='completed'
+          jobs=json.loads(subprocess.check_output(['gh','api',base+'/jobs']))['jobs']
+          steps=next(job['steps'] for job in jobs if job['name']=='build')
+          for name in ['Compile native Swift application','iPad regression tests','Standalone app interaction tests']:
+              assert next(step['conclusion'] for step in steps if step['name']==name)=='success',name
+          assert all(step['name'].startswith('Upload') for step in steps if step.get('conclusion')=='failure')
+          print('Exact application source passed device compilation and both test stages:',source)
+          PY
+      - name: Compile the verified application source
+        run: |
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+          bash scripts/build-native-ios.sh
+      - name: Record verification provenance
+        env:
+          VERIFY_RUN: ${{ inputs.verification_run }}
+        run: |
+          python3 - <<'PY'
+          import json,subprocess,pathlib,os
+          p=pathlib.Path('artifacts/build-info.json'); info=json.loads(p.read_text())
+          info['commit']=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          info['verificationRun']=os.environ['VERIFY_RUN']
+          p.write_text(json.dumps(info,indent=2))
+          PY
+      - name: Upload recovered IPA
+        id: upload
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: InkDrive-recovered
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retry recovered IPA upload
+        if: steps.upload.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: InkDrive-recovered
+          path: artifacts/*
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7

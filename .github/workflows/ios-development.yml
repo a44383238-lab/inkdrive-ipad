@@ -67,6 +67,8 @@ jobs:
           mkdir -p build/crashes
           find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -name 'InkDrive*' -type f -exec cp {} build/crashes/ \; 2>/dev/null || true
       - name: Upload development IPA
+        id: upload_ipa
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: InkDrive-development-${{ github.run_number }}
@@ -80,6 +82,24 @@ jobs:
             build/app-attachments/**
             build/app-launch.png
             build/app-startup.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Retry development IPA upload
+        if: steps.upload_ipa.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: InkDrive-development-${{ github.run_number }}
+          path: |
+            artifacts/*.ipa
+            artifacts/*.sha256
+            artifacts/build-info.json
+            build/native-attachments/**
+            build/native-tests.log
+            build/app-tests.log
+            build/app-attachments/**
+            build/app-launch.png
+            build/app-startup.log
+          overwrite: true
           if-no-files-found: error
           retention-days: 7
       - name: Upload build diagnostics
