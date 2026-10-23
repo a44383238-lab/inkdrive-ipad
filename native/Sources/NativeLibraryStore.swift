@@ -24,6 +24,7 @@ enum LibraryScreen { case library, today, campus, settings }
     @Published var material: MaterialDocument?
     @Published var screen = LibraryScreen.library
     @Published var path = ""
+    @Published private(set) var navigatingForward = true
     @Published var entries: [LibraryEntry] = []
     @Published var libraryRevision = 0
     @Published var lessons: [LessonRecord] = []
@@ -72,6 +73,8 @@ enum LibraryScreen { case library, today, campus, settings }
                 try model.snapshot().write(to: noteURL, options: .atomic)
                 _ = try repository.createNote(parent: "통계학", name: "강의 2", template: "grid")
                 try Data("<html><meta charset='utf-8'><body style='padding:40px;font-family:sans-serif'><h1>InkDrive HTML</h1><p>Fixed snapshot keeps the original document.</p></body></html>".utf8).write(to: folder.appendingPathComponent("강의자료/스냅샷.html"))
+                try Data("수업 메모".utf8).write(to: folder.appendingPathComponent("강의자료/메모.txt"))
+                recent = [note,"강의자료/메모.txt","강의자료/스냅샷.html"]
             } catch { message = error.localizedDescription }
         }
         #endif
@@ -121,6 +124,7 @@ enum LibraryScreen { case library, today, campus, settings }
     func navigate(_ next: String) {
         do {
             if !next.isEmpty { let scope = try repository.access(); _ = try FileNames.child(next, in: scope.url) }
+            navigatingForward = next.split(separator: "/").count >= path.split(separator: "/").count
             path = next; query = ""; refresh()
         } catch { message = error.localizedDescription }
     }

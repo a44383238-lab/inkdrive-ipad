@@ -252,4 +252,33 @@ import PDFKit
         XCTAssertFalse(PerfectInk.owns(restored.strokes[0]))
         XCTAssertTrue(PerfectInk.owns(restored.strokes[1]))
     }
+    func testLiftAndZeroPressureCallbacksCannotAddAShortTail() throws {
+        let editor = try editor(), record = editor.session.model.pages[0]
+        let overlay = PageOverlay(record: record, editor: editor)
+        overlay.interaction.beginPen(InkSample(point: CGPoint(x:20,y:20),pressure:0.5,time:1))
+        overlay.interaction.appendPenContact(InkSample(point: CGPoint(x:22,y:23),pressure:0.6,time:1.01),lifted:false)
+        // Both are short enough to pass the existing impossible-teleport filter.
+        overlay.interaction.appendPenContact(InkSample(point: CGPoint(x:40,y:25),pressure:0.5,time:1.1),lifted:true)
+        overlay.interaction.appendPenContact(InkSample(point: CGPoint(x:38,y:24),pressure:0,time:1.11),lifted:false)
+        overlay.interaction.finishPen(); overlay.commit()
+        let stroke = try XCTUnwrap(record.drawing.strokes.first)
+        XCTAssertLessThan(PerfectInk.bounds(stroke).maxX,26)
+        XCTAssertEqual(stroke.path.last?.location,CGPoint(x:22,y:23))
+        XCTAssertEqual(stroke.path.last?.force ?? 0,0.6,accuracy:0.0001)
+    }
+    func testVisibleOutlineRoundsVerticesWithoutEscapingThePressurePolygon() {
+        let vertices = [CGPoint(x:0,y:0),CGPoint(x:20,y:0),CGPoint(x:20,y:10),CGPoint(x:0,y:10)]
+        let path = PerfectFreehand.path(from: vertices)
+        var curves = 0, lines = 0, closed = false
+        path.applyWithBlock { item in
+            if item.pointee.type == .addQuadCurveToPoint { curves += 1 }
+            if item.pointee.type == .addLineToPoint { lines += 1 }
+            if item.pointee.type == .closeSubpath { closed = true }
+        }
+        XCTAssertEqual(curves,vertices.count); XCTAssertEqual(lines,0); XCTAssertTrue(closed)
+        XCTAssertTrue(path.contains(CGPoint(x:10,y:5)))
+        XCTAssertFalse(path.contains(CGPoint(x:0.1,y:0.1)),"A sharp pressure-polygon corner is rounded on screen")
+        XCTAssertGreaterThanOrEqual(path.boundingBoxOfPath.minX,0)
+        XCTAssertLessThanOrEqual(path.boundingBoxOfPath.maxX,20)
+    }
 }

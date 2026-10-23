@@ -12,6 +12,10 @@ final class InkDriveUITests: XCTestCase {
         XCTAssertFalse(app.buttons["새 수업 녹음"].exists)
         XCTAssertFalse(app.buttons["수업 연결"].exists)
         XCTAssertTrue(app.buttons["학교"].exists)
+        let recentText = app.buttons["최근 문서 메모.txt"]
+        XCTAssertTrue(recentText.exists)
+        XCTAssertLessThan(recentText.frame.height,50)
+        XCTAssertLessThan(recentText.frame.width,240)
         attach("Swift library", app)
         app.buttons["새 문서 메뉴"].tap()
         XCTAssertTrue(app.buttons["새 폴더"].waitForExistence(timeout: 3))
@@ -22,6 +26,7 @@ final class InkDriveUITests: XCTestCase {
         XCTAssertTrue(app.buttons["강의 1.pdf"].waitForExistence(timeout: 5))
         app.buttons["상위 폴더"].tap()
         XCTAssertTrue(app.buttons["작업설계"].exists)
+        attach("Recent thumbnails and folder navigation", app)
         app.buttons["통계학"].tap(); app.buttons["강의 1.pdf"].tap()
         XCTAssertTrue(app.buttons["녹음 목록"].waitForExistence(timeout: 12))
         XCTAssertTrue(app.buttons["녹음 시작"].exists)

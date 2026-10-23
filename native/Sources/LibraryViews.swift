@@ -28,6 +28,7 @@ struct IconAction: View {
 struct LibraryRootView: View {
     @EnvironmentObject private var store: NativeLibraryStore
     @Environment(\.scenePhase) private var phase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var form: CreationRequest?
     @State private var category = 0
     @State private var fileFilter = 0
@@ -108,11 +109,11 @@ struct LibraryRootView: View {
                 VStack(spacing: 2) { ForEach(store.recent.prefix(15), id: \.self) { path in
                     Button { store.open(store.entry(path)) } label: {
                         HStack(spacing: 10) {
-                            DocumentThumbnail(entry: store.entry(path)).frame(width: 23, height: 30)
+                            DocumentThumbnail(entry: store.entry(path), size: CGSize(width: 23, height: 30))
                             Text(store.entry(path).displayName.replacingOccurrences(of: ".pdf", with: "")).font(.system(size: 11)).lineLimit(1)
                             Spacer(minLength: 0)
                         }.padding(.vertical, 6).padding(.horizontal, 5).contentShape(Rectangle())
-                    }.buttonStyle(InkPressStyle())
+                    }.buttonStyle(InkPressStyle()).accessibilityLabel("최근 문서 " + store.entry(path).displayName)
                 } }
             }
             Spacer(minLength: 0)
@@ -163,12 +164,17 @@ struct LibraryRootView: View {
                 if !store.hasRoot {
                     VStack(spacing: 22) { FolderGlyph(color: Color(red: 0.72, green: 0.64, blue: 0.97)).frame(width: 100, height: 82); Button("폴더 연결", action: store.chooseFolder).buttonStyle(.bordered).tint(accent) }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
+                    ZStack {
                     ScrollView {
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 112, maximum: 154), spacing: 24)], alignment: .leading, spacing: 28) {
                             ForEach(Array(shown.enumerated()), id: \.element.id) { index, entry in tile(entry, index: index) }
                         }.padding(.horizontal, 22).padding(.top, 12).padding(.bottom, 100)
                         if shown.isEmpty { Text("비어 있어요").font(.system(size: 12)).foregroundStyle(.secondary).padding(50) }
-                    }
+                    }.id(store.path)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .offset(x: reduceMotion ? 0 : (store.navigatingForward ? 18 : -18))),
+                            removal: .opacity.combined(with: .offset(x: reduceMotion ? 0 : (store.navigatingForward ? -10 : 10)))))
+                    }.clipped().animation(.easeOut(duration: reduceMotion ? 0.1 : 0.16), value: store.path)
                 }
             }
             if showAdd {
@@ -244,15 +250,18 @@ private struct FolderGlyph: View {
     }
 }
 
-private struct DocumentThumbnail: View {
+struct DocumentThumbnail: View {
     @EnvironmentObject private var store: NativeLibraryStore
     let entry: LibraryEntry
+    var size = CGSize(width: 104, height: 148)
     @State private var image: UIImage?
     private static let cache = NSCache<NSString, UIImage>()
     var body: some View {
         Group { if let image { Image(uiImage: image).resizable().scaledToFit() }
-            else { NativeIcon(name: "file-text", size: 28).foregroundStyle(Color.gray).frame(width: 80, height: 112).background(Color(white: 0.92), in: RoundedRectangle(cornerRadius: 3)) } }
+            else { NativeIcon(name: "file-text", size: min(28, size.width * 0.62)).foregroundStyle(Color.gray).frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(white: 0.92), in: RoundedRectangle(cornerRadius: 3)) } }
+            .frame(width: size.width, height: size.height).clipped()
             .task(id: entry.path + String(store.libraryRevision)) {
+                image = nil
                 guard entry.path.lowercased().hasSuffix(".pdf"), let scope = try? store.repository.access(), let url = try? FileNames.child(entry.path, in: scope.url) else { return }
                 let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?.timeIntervalSince1970 ?? 0
                 let key = (url.path + String(date)) as NSString

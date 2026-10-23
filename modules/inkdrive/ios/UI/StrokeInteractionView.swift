@@ -83,7 +83,7 @@ import PDFKit
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         if isInking {
             guard let touch = touches.first(where: { $0 === activePencil }) else { return }
-            for confirmed in event?.coalescedTouches(for: touch) ?? [touch] { appendPen(sample(confirmed)) }
+            for confirmed in event?.coalescedTouches(for: touch) ?? [touch] { appendContact(confirmed) }
             return
         }
         guard let touch = touches.first(where: { $0.type == .pencil }), let first = points.first else { return }
@@ -118,7 +118,7 @@ import PDFKit
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         if isInking {
             guard let touch = touches.first(where: { $0 === activePencil }) else { return }
-            for confirmed in event?.coalescedTouches(for: touch) ?? [touch] { appendPen(sample(confirmed)) }
+            for confirmed in event?.coalescedTouches(for: touch) ?? [touch] { appendContact(confirmed) }
             finishPen(); return
         }
         guard let touch = touches.first(where: { $0.type == .pencil }), let overlay, let editor = overlay.editor, let first = points.first else { return }
@@ -250,7 +250,16 @@ import PDFKit
         editor.session.changeDrawing(pageID: overlay.record.id, to: PKDrawing(strokes: overlay.record.drawing.strokes + offset.strokes))
     }
     private func sample(_ touch: UITouch) -> InkSample {
-        InkSample(point: touch.preciseLocation(in: self), pressure: touch.maximumPossibleForce > 0 ? touch.force / touch.maximumPossibleForce : 0.5, time: touch.timestamp)
+        // Use the stable location while PencilKit is still estimating the precise location.
+        let point = touch.estimatedPropertiesExpectingUpdates.contains(.location) ? touch.location(in: self) : touch.preciseLocation(in: self)
+        return InkSample(point: point, pressure: touch.maximumPossibleForce > 0 ? touch.force / touch.maximumPossibleForce : 0.5, time: touch.timestamp)
+    }
+    private func appendContact(_ touch: UITouch) {
+        appendPenContact(sample(touch), lifted: touch.phase == .ended || touch.phase == .cancelled)
+    }
+    func appendPenContact(_ value: InkSample, lifted: Bool) {
+        guard InkInputBuffer.acceptsContact(value, lifted: lifted) else { return }
+        appendPen(value)
     }
     func beginPen(_ sample: InkSample) {
         guard !isInking, let overlay, let editor = overlay.editor else { return }

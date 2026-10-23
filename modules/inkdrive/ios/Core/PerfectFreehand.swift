@@ -128,10 +128,14 @@ enum PerfectFreehand {
     }
     static func path(from outline: [CGPoint]) -> CGPath {
         let path = CGMutablePath()
-        guard let first = outline.first else { return path }
-        path.move(to: first)
-        // Keep the upstream polygon exact. Dense Pencil samples and rounded joins provide smooth edges.
-        for point in outline.dropFirst() { path.addLine(to: point) }; path.closeSubpath()
+        guard let first = outline.first, let last = outline.last else { return path }
+        // Round the outline's sample vertices without filtering the centerline or
+        // delaying the pen tip. Each quadratic stays inside the adjacent vertices.
+        path.move(to: lerp(last, first, 0.5))
+        for index in outline.indices {
+            path.addQuadCurve(to: lerp(outline[index], outline[(index + 1) % outline.count], 0.5), control: outline[index])
+        }
+        path.closeSubpath()
         return path
     }
 }
@@ -146,4 +150,7 @@ struct InkInputBuffer {
         var value = sample; value.pressure = min(1, max(0, value.pressure))
         samples.append(value); return true
     }
+    /// A lift callback can contain a zero-force or still-estimated location well
+    /// beyond the final contact. Only coalesced contact samples belong in the ink.
+    static func acceptsContact(_ sample: InkSample, lifted: Bool) -> Bool { !lifted && sample.pressure > 0 }
 }
